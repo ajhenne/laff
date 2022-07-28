@@ -1,12 +1,8 @@
-# -*- coding: utf-8 -*-
-
 
 """setup.py: setuptools control."""
 
-
 import re
-from setuptools import setup
-
+from setuptools import setup, find_packages
 
 version = re.search(
     '^__version__\s*=\s*"(.*)"',
@@ -14,10 +10,10 @@ version = re.search(
     re.M
     ).group(1)
 
-
 with open("README.rst", "rb") as f:
     long_descr = f.read().decode("utf-8")
 
+requirements = ["astropy>=4.3","pandas>=1.4.3","matplotlib>=3.5.2", "scipy>=1.8.0"]
 
 setup(
     name = "laff",
@@ -26,13 +22,15 @@ setup(
         "console_scripts": ['laff = laff.laff:main']
         },
     version = version,
-    description = "Python command line application bare bones template.",
+    description = "Automated fitting of continuum and flares in GRB lightcurves.",
     long_description = long_descr,
     author = "Adam Hennessy",
     author_email = "ah724@leicester.ac.uk",
     url = "http://gehrcke.de/2014/02/distributing-a-python-command-line-application",
-    )
-
-
-# find requires line from old_laff version and include the dependcies here.
-# test if i can run this after uploading and also test if dependencies install
+    packages=find_packages(),
+    install_requires=requirements,
+    classifiers=[
+        "Programming Language :: Python :: 3.7",
+        "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    ],
+)
