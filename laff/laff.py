@@ -1,89 +1,117 @@
 
 """laff.laff: provides entry point main()."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 import sys
+import argparse
+import warnings
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from operator import itemgetter
-import warnings
-from pytest import param
 from scipy.odr import ODR, Model, RealData
+from operator import itemgetter
+
 from .models import Models
 from .lcimport import Imports
 
 # Silence the double scalar warnings.
 warnings.filterwarnings("ignore")
 
-# Default parameters.
-RISECONDITION = 2
-DECAYCONDITION = 4
+# laff <data_filepath> <output_filepath> <print_dirname> <rise_condition> <decay_condition>
 
-# Plot all broken powerlaw fits?
-onlyBest = True if sys.argv[2] == "n" else False
+parser = argparse.ArgumentParser(description="Lightcurve and flare fitter for GRBs", prog='laff')
+                                # epilog="")
 
-line = "//-====================================================================="
+parser.add_argument('data', nargs=1, metavar='data_filepath', type=str, help='Path to the input datafile.')
 
-isXRT = True # only can import xrt data at the moment
+parser.add_argument('-o', '--output', nargs=1, metavar='output', type=str, help='Output file to write results to.')
+
+parser.add_argument('-r', '--rise', nargs=1, metavar='rise_condition', type=float, help="Condition to alter the flare finding algorithm. A higher value makes it stricter (default: 2).")
+parser.add_argument('-d', '--decay', nargs=1, metavar='decay_condition', type=float, help="Condition to alter the decay finding algorithm. A higher vaules makes it stricter (default: 4).")
+
+parser.add_argument('-p', '--print', action='store_true', help='Show the fitted lightcurve.')
+parser.add_argument('-f', '--filetype', nargs=1, metavar='filetype', help='Changed the input filetype/mission (default: Swift/XRT .qdp).')
+parser.add_argument('-v', '--verbose', action='store_true', help="Produce more detailed text output in the terminal window.")
+
+args = parser.parse_args()
+
+### Data filepath.
+input_path = args.data[0]
+
+### Write output to table.
+if args.output:
+    output_path = args.output[0]
+
+### Rise variable.
+if args.rise:
+    RISECONDITION = args.rise[0]
+else:
+    RISECONDITION = 2
+
+### Decay variable.
+if args.decay:
+    DECAYCONDITION = args.decay[0]
+else:
+    DECAYCONDITION = 4
+
+### Filetype.
+swiftxrt = ('swift', 'xrt', 'swiftxrt') # Supported missions/filetypes.
+filetype = swiftxrt # Default filetype.
+
+if args.filetype:
+    if args.filetype[0] in swiftxrt:
+        filetype = swiftxrt
+    else:
+        print("ERROR: filetype '%s' not supported." % args.filetype[0])
+        sys.exit(1)
+
+###############################################################
+### MAIN
+###############################################################
 
 def main():
 
-    print(line,"\nLightcurve and Flare Fitter | Version %s" % __version__)
-    print("Contact: Adam Hennessy (ah724@leicester.ac.uk)")
-    print(line,"\nInput data: %s" % sys.argv[1])
-
-    #### IMPORT DATA
-    if isXRT:
-        data = Imports.swift_xrt(sys.argv[1])
-    else:
-        data = Imports.other() # eventually support other missions.
-    print(line)
+    data = importData(input_path, filetype)
 
     #### FIND FLARES
     fl_start, fl_peak, fl_end = FlareFinder(data)
-
-    print("[[ Flares (sec) ]]")
-    print("Start\t\tPeak\t\tEnd\t\t")
-    for start, peak, decay in zip(fl_start, fl_peak, fl_end):
-        times = [round(tableValue(data,x,'time'),2) for x in (start,peak,decay)]
-        print(*times, sep='\t\t')
-
-    print(line)
 
     ### FIT CONTINUUM
     data_excluded = data[data['flare'] == False]
     models, fits, pars = FitContinuum(data_excluded)
 
+    ### FIND BEST FIT
     powerlaw, parameters, stats = BestContinuum(data_excluded,models,pars)
-    
-    print("[[ Bestfit model - %s ]]" % powerlaw.__name__)
-
-    N = len(parameters)
-
-    print("Indices:\t\t", end=' ')
-    print(*[round(x,2) for x in parameters[0:int(N/2)]], sep=', ')
-    print("Breaks:\t\t\t", end=' ')
-    print(*[round(x,2) for x in parameters[int(N/2):int(N-1)]])
-    print("Normalisation:\t\t", end=' ')
-    print(*[float("{:.2e}".format(parameters[-1]))])
-    print("Chi-square:\t\t", round(stats[0],2))
-    print("Reduced chi-square:\t", round(stats[1],2))
-    print("AIC:\t\t\t", round(stats[2],2))
-    print(line)
-
     residuals = data.flux - powerlaw(parameters, np.array(data.time))
 
+    ## TEMPORARY
+    fl_start, fl_peak, fl_end = fl_start[0:3], fl_peak[0:3], fl_end[0:3]
+    
     flareParams = []
     for start, peak, end in zip(fl_start, fl_peak, fl_end):
-        print('sdgdfgdfg')
-        flare, bacon = FitFlare(data, start, peak, end, residuals)
-        print("ERG:DFGDF:GDFKNGLFKGNFG")
+        flare, residuals = FitFlare(data, start, peak, end, residuals)
+        flareParams.append(flare)
 
+    constant_range = np.logspace(np.log10(data['time'].iloc[0]),
+                                 np.log10(data['time'].iloc[-1]), num=2000)
+
+    finalModel = powerlaw(parameters, np.array(data.time))
+    for flare in flareParams:
+        finalModel += Models.flare_gaussian(flare, np.array(data.time))
+
+    finalRange = powerlaw(parameters, constant_range)
+    for flare in flareParams:
+        finalRange += Models.flare_gaussian(flare, constant_range)
+
+    if not args.verbose:
+        printResults(fl_start, parameters, stats)
+    else:
+        printResults_verbose(data, fl_start, fl_peak, fl_end, powerlaw, parameters, stats)
 
     ### PLOT RESULTS
-    # plotResults(data, powerlaw, parameters)
+    if args.print:
+        plotResults(data, finalRange, parameters)
 
 ###############################################################
 ### GENERAL FUNCTIONS
@@ -101,6 +129,14 @@ def slope(data, p1, p2):
     deltaFlux = tableValue(data,p2,"flux") - tableValue(data,p1,"flux")
     deltaTime = tableValue(data,p2,"time") - tableValue(data,p1,"time")
     return deltaFlux/deltaTime
+
+def importData(data, filetype):
+    if filetype == swiftxrt:
+        data = Imports.swift_xrt(input_path)
+    else:
+        data = Imports.other() # eventually support other missions.
+    return data
+    
 
 ###############################################################
 ### FLARE FINDER
@@ -200,9 +236,8 @@ def finddecay(data,peak,index_start):
 ###############################################################
 
 def modelfitter(data, model, inputpar):
-    tofit = RealData(data.time, data.flux, data.time_perr, data.flux_perr)
     model = Model(model)
-    odr = ODR(tofit, model, inputpar)
+    odr = ODR(data, model, inputpar)
     odr.set_job(fit_type=0)
     output = odr.run()
     if output.info != 1:
@@ -217,6 +252,7 @@ def FitContinuum(data):
     b1, b2, b3, b4, b5 = np.logspace(np.log10(data['time'].iloc[0] ) * 1.1, \
                                      np.log10(data['time'].iloc[-1]) * 0.9, \
                                      num=5)
+    data = RealData(data.time, data.flux, data.time_perr, data.flux_perr)
     a1, a2, a3, a4, a5, a6 = 1, 1, 1, 1, 1, 1
     norm = 1e-7
     brk1_fit, brk1_param = modelfitter(data, Models.powerlaw_1break, \
@@ -274,13 +310,68 @@ def FitFlare(data, start, peak, stop, residuals):
 
 
 ###############################################################
-### PLOTTING
+### OUTPUT
 ###############################################################
 
-def plotResults(data, models, pars):
+def printResults(fl_start, parameters, stats):
 
-    constant_range = np.logspace(np.log10(data['time'].iloc[0]), \
-        np.log10(data['time'].iloc[-1]), num=2000)
+    line = "//-============================================================================="
+
+    print(line,"\nLightcurve and Flare Fitter | Version %s" % __version__)
+    print("Contact: Adam Hennessy (ah724@leicester.ac.uk)")
+    print(line,"\nInput data: %s" % input_path)
+
+    print(line)
+
+    N = len(parameters)
+    print("%s flares found" % len(fl_start))
+    print("%s powerlaw breaks found" % len(parameters[0:int(N/2)]))
+    print("Chi-square:", round(stats[0],2))
+    print("Reduced chi-square:", round(stats[1],2))
+
+    print(line)
+
+    print("LAFF complete.")
+
+    print(line)
+
+def printResults_verbose(data,fl_start, fl_peak, fl_end, powerlaw, parameters, stats):
+
+    line = "//-============================================================================="
+
+    print(line,"\nLightcurve and Flare Fitter | Version %s" % __version__)
+    print("Contact: Adam Hennessy (ah724@leicester.ac.uk)")
+    print(line,"\nInput data: %s" % input_path)
+
+    print(line)
+
+    print("[[ Flares (sec) ]]")
+    print("Start\t\tPeak\t\tEnd\t\t")
+    for start, peak, decay in zip(fl_start, fl_peak, fl_end):
+        times = [round(tableValue(data,x,'time'),2) for x in (start,peak,decay)]
+        print(*times, sep='\t\t')
+
+    print(line)
+
+    print("[[ Bestfit model - %s ]]" % powerlaw.__name__)
+
+    N = len(parameters)
+
+    print("Indices:\t\t", end=' ')
+    print(*[round(x,2) for x in parameters[0:int(N/2)]], sep=', ')
+    print("Breaks:\t\t\t", end=' ')
+    print(*[round(x,2) for x in parameters[int(N/2):int(N-1)]])
+    print("Normalisation:\t\t", end=' ')
+    print(*[float("{:.2e}".format(parameters[-1]))])
+    print("Chi-square:\t\t", round(stats[0],2))
+    print("Reduced chi-square:\t", round(stats[1],2))
+    print("AIC:\t\t\t", round(stats[2],2))
+    print(line)
+
+def plotResults(data, model, power_pars):
+
+    constant_range = np.logspace(np.log10(data['time'].iloc[0]),
+                                 np.log10(data['time'].iloc[-1]), num=2000)
 
     # Plot main lightcurve.
     plt.errorbar(data.time, data.flux, \
@@ -296,14 +387,16 @@ def plotResults(data, models, pars):
         marker='', linestyle='None', capsize=0, color='red')
 
     # Plot continuum fits.
-    for model, parameters in zip(models, pars):
-        plt.plot(constant_range, model(parameters, constant_range), \
-            linestyle='--', linewidth=0.75)
+    # for model, parameters in zip(models, pars):
+    #     plt.plot(constant_range, model(parameters, constant_range), \
+    #         linestyle='--', linewidth=0.75)
 
-    # Plot powerlaw breaks.
-    N = len(pars[0])
-    for broken in pars[0][int(N/2):int(N-1)]:
-        plt.axvline(broken, color='darkgrey', linestyle='--', linewidth=0.5)
+    plt.plot(constant_range, model)
+
+    # # Plot powerlaw breaks.
+    # N = len(power_pars[0])
+    # for broken in power_pars[0][int(N/2):int(N-1)]:
+    #     plt.axvline(broken, color='darkgrey', linestyle='--', linewidth=0.5)
 
     
 
