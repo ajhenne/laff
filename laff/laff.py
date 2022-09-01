@@ -11,6 +11,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.odr import ODR, Model, RealData
 from operator import itemgetter
+from csv import writer
+from os.path import exists
+import scipy.integrate as integrate
 
 from .models import Models
 from .lcimport import Imports
@@ -18,21 +21,21 @@ from .lcimport import Imports
 # Silence the double scalar warnings.
 warnings.filterwarnings("ignore")
 
-# laff <data_filepath> <output_filepath> <print_dirname> <rise_condition> <decay_condition>
-
 parser = argparse.ArgumentParser(description="Lightcurve and flare fitter for GRBs", prog='laff')
-                                # epilog="")
 
 parser.add_argument('data', nargs=1, metavar='data_filepath', type=str, help='Path to the input datafile.')
 
+parser.add_argument('-n', '--name', nargs=1, metavar='name', type=str, help='User specific name for the run, perhaps the name of the GRB.')
 parser.add_argument('-o', '--output', nargs=1, metavar='output', type=str, help='Output file to write results to.')
 
 parser.add_argument('-r', '--rise', nargs=1, metavar='rise_condition', type=float, help="Condition to alter the flare finding algorithm. A higher value makes it stricter (default: 2).")
 parser.add_argument('-d', '--decay', nargs=1, metavar='decay_condition', type=float, help="Condition to alter the decay finding algorithm. A higher vaules makes it stricter (default: 4).")
+parser.add_argument('-f', '--force', nargs=2, metavar='force_fit', help="Force a specific fit type.")
 
-parser.add_argument('-p', '--print', action='store_true', help='Show the fitted lightcurve.')
-parser.add_argument('-f', '--filetype', nargs=1, metavar='filetype', help='Changed the input filetype/mission (default: Swift/XRT .qdp).')
+parser.add_argument('-p', '--print', nargs='?', action='store', const=2, type=int, help='Show the fitted lightcurve.')
+parser.add_argument('-m', '--mission', nargs=1, metavar='mission', help='Changed the input mission/filetype (default: Swift/XRT .qdp).')
 parser.add_argument('-v', '--verbose', action='store_true', help="Produce more detailed text output in the terminal window.")
+parser.add_argument('-q', '--quiet', action='store_true', help="Quiet.")
 
 args = parser.parse_args()
 
@@ -57,14 +60,25 @@ else:
 
 ### Filetype.
 swiftxrt = ('swift', 'xrt', 'swiftxrt') # Supported missions/filetypes.
-filetype = swiftxrt # Default filetype.
+mission = swiftxrt # Default filetype.
 
-if args.filetype:
-    if args.filetype[0] in swiftxrt:
-        filetype = swiftxrt
+if args.mission:
+    if args.mission[0] in swiftxrt:
+        mission = swiftxrt
     else:
-        print("ERROR: filetype '%s' not supported." % args.filetype[0])
+        print("ERROR: filetype '%s' not supported." % args.mission[0])
         sys.exit(1)
+
+### Force certain fits.
+call_breaks = ('breaks', 'break', 'powerlaw')
+if args.force:
+    # Force number of powerlaws.
+    if args.force[0] in call_breaks:
+            force = int(args.force[1])
+            if force > 5 or force < 0:
+                raise ValueError("'breaks' argument must be in range 1 to 5.")
+else:
+    force = False
 
 ###############################################################
 ### MAIN
@@ -72,30 +86,40 @@ if args.filetype:
 
 def main():
 
-    data = importData(input_path, filetype)
+    data = importData(input_path, mission)
 
     #### FIND FLARES
     fl_start, fl_peak, fl_end = FlareFinder(data)
+
+    ## TEMPORARY
+    fl_start, fl_peak, fl_end = fl_start[0:3], fl_peak[0:3], fl_end[0:3]
+    fl_end[2] = 80
+
+    # Assign flare times in table.
+    for start, decay in zip(fl_start, fl_end):
+        beginning = data.index >= start
+        end = data.index <= decay
+        data.loc[beginning & end, 'flare'] = True
 
     ### FIT CONTINUUM
     data_excluded = data[data['flare'] == False]
     models, fits, pars = FitContinuum(data_excluded)
 
     ### FIND BEST FIT
-    powerlaw, parameters, stats = BestContinuum(data_excluded,models,pars)
+    powerlaw, parameters, stats = BestContinuum(data_excluded,models,pars,force)
     residuals = data.flux - powerlaw(parameters, np.array(data.time))
-
-    ## TEMPORARY
-    fl_start, fl_peak, fl_end = fl_start[0:3], fl_peak[0:3], fl_end[0:3]
     
+    ### FIT FLARES
     flareParams = []
     for start, peak, end in zip(fl_start, fl_peak, fl_end):
-        flare, residuals = FitFlare(data, start, peak, end, residuals)
+        flare, flare_err, updated_res = FitFlare(data, start, peak, end, residuals)
         flareParams.append(flare)
+        residuals = updated_res
 
     constant_range = np.logspace(np.log10(data['time'].iloc[0]),
                                  np.log10(data['time'].iloc[-1]), num=2000)
 
+    ### DEFINE FINAL FITTED MODEL FUNCTION
     finalModel = powerlaw(parameters, np.array(data.time))
     for flare in flareParams:
         finalModel += Models.flare_gaussian(flare, np.array(data.time))
@@ -104,14 +128,42 @@ def main():
     for flare in flareParams:
         finalRange += Models.flare_gaussian(flare, constant_range)
 
-    if not args.verbose:
-        printResults(fl_start, parameters, stats)
-    else:
-        printResults_verbose(data, fl_start, fl_peak, fl_end, powerlaw, parameters, stats)
+    ### CALCULATE FLUENCES
 
-    ### PLOT RESULTS
+    func_powerlaw = lambda x: powerlaw(parameters, x) # define powerlaw function
+
+    def createFlare(flarefits): # define flare functions
+        return lambda x: Models.flare_gaussian(flarefits, x)
+    func_flare = []
+    for flare in flareParams:
+        func_flare.append(createFlare(flare))
+
+    fluence_full = calculateFluence(func_powerlaw, func_flare, tableValue(data,0,"time"), tableValue(data,-1,"time"))
+
+    fluence_flare = []
+    for beg, stop, par in zip(fl_start, fl_end, flareParams):
+        fluence_flare.append(calculateFluence(func_powerlaw, func_flare, (par[1]-10*par[2]), (par[1]+10*par[2])))
+
+    # Neaten up fluences.
+    flarecount = len(fluence_flare)
+    fluences = [fluence_full[0], *[fluence_flare[i][i+1] for i in range(flarecount)], fluence_full[0]+sum([fluence_flare[i][i+1] for i in range(flarecount)])]
+
+    ### FINISHING UP
+
+    # Print results to terminal.
+    if not args.quiet:
+        if not args.verbose:
+            printResults(fl_start, parameters, stats)
+        else:
+            printResults_verbose(data, fl_start, fl_peak, fl_end, powerlaw, parameters, stats, fluences)
+
+    # Show the lightcurve plots.
     if args.print:
-        plotResults(data, finalRange, parameters)
+        plotResults(data, finalRange, [parameters,powerlaw], flareParams, args.print)
+
+    # Write output to table.
+    if args.output:
+        produceOutput(data, fl_start, fl_peak, fl_end, fluences)
 
 ###############################################################
 ### GENERAL FUNCTIONS
@@ -130,14 +182,13 @@ def slope(data, p1, p2):
     deltaTime = tableValue(data,p2,"time") - tableValue(data,p1,"time")
     return deltaFlux/deltaTime
 
-def importData(data, filetype):
-    if filetype == swiftxrt:
+def importData(data, mission):
+    if mission == swiftxrt:
         data = Imports.swift_xrt(input_path)
     else:
         data = Imports.other() # eventually support other missions.
     return data
     
-
 ###############################################################
 ### FLARE FINDER
 ###############################################################
@@ -169,13 +220,8 @@ def FlareFinder(data):
         index_decay.append(finddecay(data,peak,index_start))
     index_decay = uniqueList(index_decay)
 
-    # Assign flare times in table.
-    for start, decay in zip(index_start, index_decay):
-        beginning = data.index >= start
-        end = data.index <= decay
-        data.loc[beginning & end, 'flare'] = True
-
     return index_start, index_peak, index_decay
+
 
 def potentialflare(data,index):
 
@@ -200,11 +246,13 @@ def potentialflare(data,index):
         counter = 0
         return False   
 
+
 def findstart(data,possiblestart):
     minval = min([tableValue(data,possiblestart+i,"flux") \
         for i in range(-30,1) if (possiblestart+i >= 0)])
     start = data[data['flux'] == minval].index.values[0]
     return start
+
 
 def findpeak(data,start,index_start):
     j = 0
@@ -214,6 +262,7 @@ def findpeak(data,start,index_start):
     maxval = max([tableValue(data,start+j,"flux") for i in range (-5,5)])
     peak = data[data['flux'] == maxval].index.values[0]
     return peak
+
 
 def finddecay(data,peak,index_start):
     condition = 0
@@ -247,6 +296,7 @@ def modelfitter(data, model, inputpar):
             i += 1
     return output, output.beta
 
+
 def FitContinuum(data):
     # Initialise defeault index parameters at logarithmic intervals.
     b1, b2, b3, b4, b5 = np.logspace(np.log10(data['time'].iloc[0] ) * 1.1, \
@@ -274,7 +324,8 @@ def FitContinuum(data):
 
     return models, fits, pars
 
-def BestContinuum(data,models,pars):
+
+def BestContinuum(data,models,pars, force):
 
     evaluate_continuum = []
     for model, parameters in zip(models, pars):
@@ -289,6 +340,12 @@ def BestContinuum(data,models,pars):
 
         evaluate_continuum.append((model, parameters, chisq, red_chisq, AIC))
 
+    # If number of breaks forced, default to this.
+    if force:
+        force_model, force_par, chisq, red_chisq, AIC = (x for x in evaluate_continuum[force-1])
+        statistics = [chisq, red_chisq, AIC]
+        return force_model, force_par, statistics
+
     # Find best fitting model as lowest AIC.
     gen = (x for x in evaluate_continuum)
     best_model, best_par, chisq, red_chisq, AIC = min(gen, key=itemgetter(4))
@@ -297,17 +354,27 @@ def BestContinuum(data,models,pars):
     return best_model, best_par, statistics
 
 
-
 def FitFlare(data, start, peak, stop, residuals):
     
     data_flare = RealData(data.time[start:stop], residuals[start:stop], \
                     data.time_perr[start:stop], data.flux_perr[start:stop])    
     flare_fit, flare_param = modelfitter(data_flare, Models.flare_gaussian, \
             [tableValue(data,peak,"flux"), tableValue(data,peak,"time"), \
-            tableValue(data,stop,"time") - tableValue(data,start,"time")])
-    residuals = residuals - Models.flare_gaussian(flare_param, np.array(data.time))
-    return flare_param, residuals
+            0.5*(tableValue(data,stop,"time") - tableValue(data,start,"time"))])
 
+    residuals = residuals - Models.flare_gaussian(flare_param, np.array(data.time))
+
+    flare_param_err = flare_fit.sd_beta
+
+    return flare_param, flare_param_err, residuals
+
+def calculateFluence(powerlaw_func, flare_funclist, start, stop):
+    comp_power = integrate.quad(powerlaw_func, start, stop)[0] # Calculate component from powerlaw.
+    comp_flare = []
+    for anotherone in flare_funclist:
+        comp_flare.append(integrate.quad(anotherone, start, stop)[0]) # Calculate component(s) from flares.
+    total = comp_power + np.sum(comp_flare) # Total.
+    return comp_power, *comp_flare, total
 
 ###############################################################
 ### OUTPUT
@@ -315,7 +382,7 @@ def FitFlare(data, start, peak, stop, residuals):
 
 def printResults(fl_start, parameters, stats):
 
-    line = "//-============================================================================="
+    line = "//-===============-"
 
     print(line,"\nLightcurve and Flare Fitter | Version %s" % __version__)
     print("Contact: Adam Hennessy (ah724@leicester.ac.uk)")
@@ -335,9 +402,10 @@ def printResults(fl_start, parameters, stats):
 
     print(line)
 
-def printResults_verbose(data,fl_start, fl_peak, fl_end, powerlaw, parameters, stats):
 
-    line = "//-============================================================================="
+def printResults_verbose(data,fl_start, fl_peak, fl_end, powerlaw, parameters, stats, fluences):
+
+    line = "//-===============-"
 
     print(line,"\nLightcurve and Flare Fitter | Version %s" % __version__)
     print("Contact: Adam Hennessy (ah724@leicester.ac.uk)")
@@ -368,12 +436,24 @@ def printResults_verbose(data,fl_start, fl_peak, fl_end, powerlaw, parameters, s
     print("AIC:\t\t\t", round(stats[2],2))
     print(line)
 
-def plotResults(data, model, power_pars):
+    # Print fluences.
+    print("[[ Fluences ]] ")
+    print("Powerlaw >\t", "{:.4e}".format(fluences[0]))
+
+    for count, fl in enumerate(fluences[1:-1], start=1):
+        print(f"Flare {count} >\t","{:.4e}".format(fl))
+
+    print("Total\t>\t","{:.4e}".format(fluences[-1]))
+
+    print(line)
+
+
+def plotResults(data, model, power_pars, flare_pars, level):
 
     constant_range = np.logspace(np.log10(data['time'].iloc[0]),
                                  np.log10(data['time'].iloc[-1]), num=2000)
 
-    # Plot main lightcurve.
+    # Plot lightcurve data.
     plt.errorbar(data.time, data.flux, \
         xerr=[-data.time_nerr, data.time_perr], \
         yerr=[-data.flux_nerr, data.flux_perr], \
@@ -386,19 +466,52 @@ def plotResults(data, model, power_pars):
         yerr=[-data.flux_nerr[flaretime], data.flux_perr[flaretime]], \
         marker='', linestyle='None', capsize=0, color='red')
 
-    # Plot continuum fits.
-    # for model, parameters in zip(models, pars):
-    #     plt.plot(constant_range, model(parameters, constant_range), \
-    #         linestyle='--', linewidth=0.75)
+    # Plot fitted model.
+    if level >= 2:
+        plt.plot(constant_range, model)
 
-    plt.plot(constant_range, model)
+    # Plot powerlaw breaks.
+    if level >= 3:
+        N = len(power_pars[0])
+        for broken in power_pars[0][int(N/2):int(N-1)]:
+            plt.axvline(broken, color='darkgrey', linestyle='--', linewidth=0.5)
 
-    # # Plot powerlaw breaks.
-    # N = len(power_pars[0])
-    # for broken in power_pars[0][int(N/2):int(N-1)]:
-    #     plt.axvline(broken, color='darkgrey', linestyle='--', linewidth=0.5)
+    # Plot model components.
+    if level >= 4:
+        plt.plot(constant_range, power_pars[1](power_pars[0], constant_range))
+        for flare in flare_pars:
+            plt.plot(constant_range, Models.flare_gaussian(flare, constant_range), linestyle='--', linewidth=0.5)
 
-    
+    y_bottom = data.flux.min()*0.5
+    y_top = data.flux.max()*3
+
+    plt.ylim(y_bottom, y_top)
 
     plt.loglog()
     plt.show()
+
+def produceOutput(data, start, peak, end, fluence_list):
+
+    # If file doesn't exist yet, add header row.
+    headerList = ['name','flare#','start','peak','end','fluence','fluence_err']
+    if not exists(output_path):
+        with open(output_path, 'w') as file:
+            object = writer(file)
+            object.writerow(headerList)
+            file.close()
+    # Default name if not user-specified.
+    if args.name:
+        o1 = args.name[0]
+    else:
+        o1 = 'laff_run'
+    # Write flare times.
+    i = 1
+    for o3, o4, o5, o6 in zip(start, peak, end, fluence_list):
+        o2 = i
+        o3, o4, o5 = [tableValue(data,x,'time') for x in (o3, o4, o5)]
+        outputline = o1, o2, o3, o4, o5, o6[i]
+        with open(output_path, 'a') as file:
+            object = writer(file)
+            object.writerow(outputline)
+            file.close()
+        i += 1
