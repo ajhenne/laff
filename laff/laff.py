@@ -35,7 +35,7 @@ parser.add_argument('-f', '--force', nargs=2, metavar='force_fit', help="Force a
 parser.add_argument('-p', '--print', nargs='?', action='store', const=2, type=int, help='Show the fitted lightcurve.')
 parser.add_argument('-m', '--mission', nargs=1, metavar='mission', help='Changed the input mission/filetype (default: Swift/XRT .qdp).')
 parser.add_argument('-v', '--verbose', action='store_true', help="Produce more detailed text output in the terminal window.")
-parser.add_argument('-q', '--quiet', action='store_true', help="Quiet.")
+parser.add_argument('-q', '--quiet', action='store_true', help="Don't produce any terminal output.")
 
 args = parser.parse_args()
 
@@ -59,8 +59,8 @@ else:
     DECAYCONDITION = 4
 
 ### Filetype.
-swiftxrt = ('swift', 'xrt', 'swiftxrt') # Supported missions/filetypes.
-mission = swiftxrt # Default filetype.
+swiftxrt = ('swift', 'xrt', 'swiftxrt') # Aliases for Swift.
+mission = swiftxrt # Default filetype - nothing else yet supported.
 
 if args.mission:
     if args.mission[0] in swiftxrt:
@@ -74,9 +74,12 @@ call_breaks = ('breaks', 'break', 'powerlaw')
 if args.force:
     # Force number of powerlaws.
     if args.force[0] in call_breaks:
-            force = int(args.force[1])
-            if force > 5 or force < 0:
-                raise ValueError("'breaks' argument must be in range 1 to 5.")
+            try:
+                force = int(args.force[1])
+            except:
+                raise ValueError("--force breaks argument invalid: must be interger in range 1 to 5.")
+            if not 1 <= force <= 5:
+                raise ValueError("--force breaks argument invalid: must be in range 1 to 5.")
 else:
     force = False
 
@@ -106,7 +109,7 @@ def main():
     models, fits, pars = FitContinuum(data_excluded)
 
     ### FIND BEST FIT
-    powerlaw, parameters, stats = BestContinuum(data_excluded,models,pars,force)
+    powerlaw, parameters, stats = SelectContinuum(data_excluded,models,pars,force)
     residuals = data.flux - powerlaw(parameters, np.array(data.time))
     
     ### FIT FLARES
@@ -164,6 +167,8 @@ def main():
     # Write output to table.
     if args.output:
         produceOutput(data, fl_start, fl_peak, fl_end, fluences)
+
+    print("//- LAFF run finished successfully.")
 
 ###############################################################
 ### GENERAL FUNCTIONS
@@ -325,8 +330,8 @@ def FitContinuum(data):
     return models, fits, pars
 
 
-def BestContinuum(data,models,pars, force):
-
+def SelectContinuum(data,models,pars, force):
+    # Select the best fitting continuum (or force a certain fit).
     evaluate_continuum = []
     for model, parameters in zip(models, pars):
         values = model(parameters, np.array(data.time))
@@ -340,7 +345,7 @@ def BestContinuum(data,models,pars, force):
 
         evaluate_continuum.append((model, parameters, chisq, red_chisq, AIC))
 
-    # If number of breaks forced, default to this.
+    # If number of breaks forced, use this.
     if force:
         force_model, force_par, chisq, red_chisq, AIC = (x for x in evaluate_continuum[force-1])
         statistics = [chisq, red_chisq, AIC]
@@ -438,12 +443,12 @@ def printResults_verbose(data,fl_start, fl_peak, fl_end, powerlaw, parameters, s
 
     # Print fluences.
     print("[[ Fluences ]] ")
-    print("Powerlaw >\t", "{:.4e}".format(fluences[0]))
+    print("Continuum:\t\t", "{:.4e}".format(fluences[0]))
 
     for count, fl in enumerate(fluences[1:-1], start=1):
-        print(f"Flare {count} >\t","{:.4e}".format(fl))
+        print(f"Flare {count}:\t\t","{:.4e}".format(fl))
 
-    print("Total\t>\t","{:.4e}".format(fluences[-1]))
+    print("Total model:\t\t","{:.4e}".format(fluences[-1]))
 
     print(line)
 
@@ -490,7 +495,8 @@ def plotResults(data, model, power_pars, flare_pars, level):
     plt.loglog()
     plt.show()
 
-def produceOutput(data, start, peak, end, fluence_list):
+
+def produceOutput(data, start, peak, end, fluences):
 
     # If file doesn't exist yet, add header row.
     headerList = ['name','flare#','start','peak','end','fluence','fluence_err']
@@ -499,17 +505,21 @@ def produceOutput(data, start, peak, end, fluence_list):
             object = writer(file)
             object.writerow(headerList)
             file.close()
+
     # Default name if not user-specified.
     if args.name:
-        o1 = args.name[0]
+        out_name = args.name[0]
     else:
-        o1 = 'laff_run'
-    # Write flare times.
+        out_name = 'laff_run'
+
     i = 1
-    for o3, o4, o5, o6 in zip(start, peak, end, fluence_list):
-        o2 = i
-        o3, o4, o5 = [tableValue(data,x,'time') for x in (o3, o4, o5)]
-        outputline = o1, o2, o3, o4, o5, o6[i]
+
+    # Write flare times and fluences to table.
+    for strt, peek, eend in zip(start, peak, end):
+        out_flno = i
+        out_srt, out_peak, out_end = [tableValue(data,x,'time') for x in (strt, peek, eend)]
+        outputline = out_name, out_flno, out_srt, out_peak, out_end, fluences[i]
+
         with open(output_path, 'a') as file:
             object = writer(file)
             object.writerow(outputline)
