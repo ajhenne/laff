@@ -13,7 +13,8 @@ version = re.search(
 with open("README.rst", "rb") as f:
     long_descr = f.read().decode("utf-8")
 
-requirements = ["astropy>=4.3","pandas>=1.4.3","matplotlib>=3.5.2", "scipy>=1.8.0"]
+requirements = ["astropy>=4.3","pandas>=1.4.3","matplotlib>=3.5.2", "scipy>=1.8.0","numpy>=1.23", \
+    "argparse>=1.4"]
 
 setup(
     name = "laff",
@@ -26,7 +27,7 @@ setup(
     long_description = long_descr,
     author = "Adam Hennessy",
     author_email = "ah724@leicester.ac.uk",
-    url = "http://gehrcke.de/2014/02/distributing-a-python-command-line-application",
+    url = "https://github.com/ajhenne/laff",
     packages=find_packages(),
     install_requires=requirements,
     classifiers=[
