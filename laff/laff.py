@@ -94,9 +94,9 @@ def main():
     #### FIND FLARES
     fl_start, fl_peak, fl_end = FlareFinder(data)
 
-    ## TEMPORARY
-    fl_start, fl_peak, fl_end = fl_start[0:3], fl_peak[0:3], fl_end[0:3]
-    fl_end[2] = 80
+    ## TEMPORARY for 2101112A
+    # fl_start, fl_peak, fl_end = fl_start[0:3], fl_peak[0:3], fl_end[0:3]
+    # fl_end[2] = 80
 
     # Assign flare times in table.
     for start, decay in zip(fl_start, fl_end):
