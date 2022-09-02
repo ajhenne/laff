@@ -2,7 +2,7 @@
 """setup.py: setuptools control."""
 
 import re
-from setuptools import setup, find_packages
+from setuptools import setup
 
 version = re.search(
     '^__version__\s*=\s*"(.*)"',
@@ -28,7 +28,6 @@ setup(
     author = "Adam Hennessy",
     author_email = "ah724@leicester.ac.uk",
     url = "https://github.com/ajhenne/laff",
-    packages=find_packages(),
     install_requires=requirements,
     classifiers=[
         "Programming Language :: Python :: 3.7",

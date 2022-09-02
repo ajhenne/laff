@@ -1,7 +1,7 @@
 
 """laff.laff: provides entry point main()."""
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 import sys
 import argparse
