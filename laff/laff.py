@@ -1,7 +1,7 @@
 
 """laff.laff: provides entry point main()."""
 
-__version__ = "0.3.4"
+__version__ = "0.3.5"
 
 import sys
 import argparse
@@ -369,8 +369,7 @@ def FitFlare(data, start, peak, stop, residuals):
             [tableValue(data,peak,"flux"), tableValue(data,peak,"time"), \
             0.5*(tableValue(data,stop,"time") - tableValue(data,start,"time"))])
 
-    for param in flare_param:
-        param = abs(param)
+    flare_param = [abs(x) for x in flare_param]
 
     residuals = residuals - Models.flare_gaussian(flare_param, np.array(data.time))
 
