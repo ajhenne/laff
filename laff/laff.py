@@ -1,7 +1,7 @@
 
 """laff.laff: provides entry point main()."""
 
-__version__ = "0.3.5"
+__version__ = "0.3.6"
 
 import sys
 import argparse
@@ -88,8 +88,6 @@ else:
 ###############################################################
 
 def main():
-
-    print("TEST")
 
     data = importData(input_path, mission)
 
