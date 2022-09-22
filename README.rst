@@ -1,83 +1,39 @@
-python-cmdline-bootstrap
+Title
 ========================
 
-This is a structure template for Python command line applications, ready to be
-released and distributed via setuptools/PyPI/pip for Python 2 and 3.
+Desc
 
-Please have a look at the corresponding article:
-http://gehrcke.de/2014/02/distributing-a-python-command-line-application/
+Installation
+-----
+
+Download instructions
+
 
 
 Usage
------
-
-Clone this repository and adopt the bootstrap structure for your own project.
-This is just a starting point, but I hope a good one. From there on, you should
-read and follow https://packaging.python.org/,
-the definite resource on Python packaging.
-
-
-
-Behavior
 --------
 
-Flexible invocation
+Example 1
 *******************
 
-The application can be run right from the source directory, in different
-ways:
+Desc
 
-1) Treating the bootstrap directory as a package *and* as the main script::
+1) Step 1::
 
-    $ python -m bootstrap arg1 arg2
-    Executing bootstrap version 0.2.0.
-    List of argument strings: ['arg1', 'arg2']
-    Stuff and Boo():
-    <class 'bootstrap.stuff.Stuff'>
-    <bootstrap.bootstrap.Boo object at 0x7f43d9f65a90>
+    Code
 
-2) Using ``setup.py develop`` (documented `here <https://setuptools.pypa.io/en/latest/userguide/development_mode.html>`_)::
+2) Step 2::
 
-    # This installs the bootstrap command linking back
-    # to the current checkout, quite neat for development!
-    $ python setup.py develop
-    ...
-    $ bootstrap arg1 arg2
+    # Code
 
-
-3) Using the bootstrap-runner.py wrapper::
-
-    $ ./bootstrap-runner.py arg1 arg2
-    Executing bootstrap version 0.2.0.
-    List of argument strings: ['arg1', 'arg2']
-    Stuff and Boo():
-    <class 'bootstrap.stuff.Stuff'>
-    <bootstrap.bootstrap.Boo object at 0x7f149554ead0>
-
-
-Installation sets up bootstrap command
+Another Usage
 **************************************
 
 Situation before installation::
 
-    $ bootstrap
-    bash: bootstrap: command not found
+Test
 
-Installation right from the source tree (or via pip from PyPI)::
-
-    $ python setup.py install
-
-Now, the ``bootstrap`` command is available::
-
-    $ bootstrap arg1 arg2
-    Executing bootstrap version 0.2.0.
-    List of argument strings: ['arg1', 'arg2']
-    Stuff and Boo():
-    <class 'bootstrap.stuff.Stuff'>
-    <bootstrap.bootstrap.Boo object at 0x7f366749a190>
+    Test
 
 
-On Unix-like systems, the installation places a ``bootstrap`` script into a
-centralized ``bin`` directory, which should be in your ``PATH``. On Windows,
-``bootstrap.exe`` is placed into a centralized ``Scripts`` directory which
-should also be in your ``PATH``.
+Sentence ``bootstrap`` more.
