@@ -1,7 +1,7 @@
 
 """laff.laff: provides entry point main()."""
 
-__version__ = "0.3.8"
+__version__ = "0.4.0"
 
 import sys
 import argparse
@@ -30,12 +30,13 @@ parser.add_argument('-o', '--output', nargs=1, metavar='output', type=str, help=
 
 parser.add_argument('-r', '--rise', nargs=1, metavar='rise_condition', type=float, help="Condition to alter the flare finding algorithm. A higher value makes it stricter (default: 2).")
 parser.add_argument('-d', '--decay', nargs=1, metavar='decay_condition', type=float, help="Condition to alter the decay finding algorithm. A higher vaules makes it stricter (default: 4).")
-parser.add_argument('-f', '--force', nargs=2, metavar='force_fit', help="Force a specific fit type.")
+parser.add_argument('-b', '--breaks', nargs=1, metavar='force_fit', help="Force a specific number of powerlaw breaks")
 
-parser.add_argument('-p', '--print', nargs='?', action='store', const=2, type=int, help='Show the fitted lightcurve.')
-parser.add_argument('-m', '--mission', nargs=1, metavar='mission', help='Changed the input mission/filetype (default: Swift/XRT .qdp).')
+parser.add_argument('-s', '--show', nargs='?', action='store', const=2, type=int, help='Show the fitted lightcurve.')
 parser.add_argument('-v', '--verbose', action='store_true', help="Produce more detailed text output in the terminal window.")
 parser.add_argument('-q', '--quiet', action='store_true', help="Don't produce any terminal output.")
+
+parser.add_argument('-m', '--mission', nargs=1, metavar='mission', help='Changed the input mission/filetype (default: Swift/XRT .qdp).')
 
 args = parser.parse_args()
 
@@ -59,27 +60,29 @@ else:
     DECAYCONDITION = 4
 
 ### Filetype.
-swiftxrt = ('swift', 'xrt', 'swiftxrt') # Aliases for Swift.
-mission = swiftxrt # Default filetype - nothing else yet supported.
+swiftxrt  = ('swift', 'xrt', 'swiftxrt')     # Swift-XRT
+swiftbulk = ('swiftbulk', 'bulk', 'xrtbulk') # Swift-XRT (bulk)
+
+mission = swiftxrt # Default filetype.
 
 if args.mission:
     if args.mission[0] in swiftxrt:
         mission = swiftxrt
+    if args.mission[0] in swiftbulk:
+        mission = swiftbulk
     else:
         print("ERROR: filetype '%s' not supported." % args.mission[0])
         sys.exit(1)
 
 ### Force certain fits.
-call_breaks = ('breaks', 'break', 'powerlaw')
-if args.force:
+if args.breaks:
     # Force number of powerlaws.
-    if args.force[0] in call_breaks:
-            try:
-                force = int(args.force[1])
-            except:
-                raise ValueError("--force breaks argument invalid: must be interger in range 1 to 5.")
-            if not 1 <= force <= 5:
-                raise ValueError("--force breaks argument invalid: must be in range 1 to 5.")
+    try:
+        force = int(args.force)
+    except:
+        raise ValueError("--force breaks argument invalid: must be integer in range 1 to 5.")
+    if not 1 <= force <= 5:
+        raise ValueError("--force breaks argument invalid: must be in range 1 to 5.")
 else:
     force = False
 
@@ -95,8 +98,8 @@ def main():
     fl_start, fl_peak, fl_end = FlareFinder(data)
 
     # TEMPORARY for 2101112A
-    fl_start, fl_peak, fl_end = fl_start[0:3], fl_peak[0:3], fl_end[0:3]
-    fl_end[2] = 80
+    # fl_start, fl_peak, fl_end = fl_start[0:3], fl_peak[0:3], fl_end[0:3]
+    # fl_end[2] = 80
 
     # Assign flare times in table.
     for start, decay in zip(fl_start, fl_end):
@@ -161,8 +164,8 @@ def main():
             printResults_verbose(data, fl_start, fl_peak, fl_end, powerlaw, parameters, stats, fluences)
 
     # Show the lightcurve plots.
-    if args.print:
-        plotResults(data, finalRange, [parameters,powerlaw], flareParams, args.print)
+    if args.show:
+        plotResults(data, finalRange, [parameters,powerlaw], flareParams, args.show)
 
     # Write output to table.
     if args.output:
@@ -190,6 +193,8 @@ def slope(data, p1, p2):
 def importData(data, mission):
     if mission == swiftxrt:
         data = Imports.swift_xrt(input_path)
+    if mission == swiftbulk:
+        data = Imports.swift_bulk(input_path)
     else:
         data = Imports.other() # eventually support other missions.
     return data
