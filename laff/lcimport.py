@@ -73,7 +73,7 @@ class Imports(object):
                 Formatting data table object ready for LAFF.
         """
 
-        import_table = Table.read(filepath, format='ascii.qdp', table_id=i)
+        import_table = Table.read(filepath, format='ascii.qdp', table_id=0)
 
         data = vstack(import_table).to_pandas()
         data = data.sort_values(by=['col1'])
