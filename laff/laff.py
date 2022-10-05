@@ -1,7 +1,7 @@
 
 """laff.laff: provides entry point main()."""
 
-__version__ = "0.4.1"
+__version__ = "0.4.2"
 
 import sys
 import argparse
@@ -23,6 +23,7 @@ warnings.filterwarnings("ignore")
 
 parser = argparse.ArgumentParser(description="Lightcurve and flare fitter for GRBs", prog='laff')
 
+parser.add_argument('--version', action='version', version='__version__')
 parser.add_argument('data', nargs=1, metavar='data_filepath', type=str, help='Path to the input datafile.')
 
 parser.add_argument('-n', '--name', nargs=1, metavar='name', type=str, help='User specific name for the run, perhaps the name of the GRB.')
