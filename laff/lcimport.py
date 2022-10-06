@@ -74,7 +74,6 @@ class Imports(object):
         """
 
         import_table = Table.read(filepath, format='ascii.qdp', table_id=0)
-
         data = vstack(import_table).to_pandas()
         data = data.sort_values(by=['col1'])
         data = data.reset_index(drop=True)
@@ -82,6 +81,8 @@ class Imports(object):
             'col1': 'time', 'col1_perr': 'time_perr', 'col1_nerr': 'time_nerr',
             'col2': 'flux', 'col2_perr': 'flux_perr', 'col2_nerr': 'flux_nerr'})
         data['flare'] = False
+
+        data = None if len(data) <= 3 else data # Seems to break if data <= 3.
 
         return data
 
