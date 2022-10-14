@@ -4,71 +4,121 @@ import numpy as np
 
 class Models(object):
 
+    def powerlaw(params, x, data):
+        num_breaks = params['num_breaks']
+        index1 = params['index1']
+        index2 = params['index2']
+        index3 = params['index3']
+        index4 = params['index4']
+        index5 = params['index5']
+        index6 = params['index6']
+
+        break1 = params['break1']
+        break2 = params['break2']
+        break3 = params['break3']
+        break4 = params['break4']
+        break5 = params['break5']
+
+        normal = params['normal']
+
+        cond = [x > break1, x > break2, x > break3, x > break4, x > break5]
+
+        if num_breaks >= 0:
+            model = normal * (x**(-index1))
+        if num_breaks >= 1:
+            model[np.where(cond[0])] = normal * (x[np.where(cond[0])]**(-index2)) * (break1**(-index1+index2))
+        if num_breaks >= 2:
+            model[np.where(cond[1])] = normal * (x[np.where(cond[1])]**(-index3)) * (break1**(-index1+index2)) * (break2**(-index2+index3))
+        if num_breaks >= 3:
+            model[np.where(cond[2])] = normal * (x[np.where(cond[2])]**(-index4)) * (break1**(-index1+index2)) * (break2**(-index2+index3)) * (break3**(-index3+index4))
+        if num_breaks >= 4:
+            model[np.where(cond[3])] = normal * (x[np.where(cond[3])]**(-index5)) * (break1**(-index1+index2)) * (break2**(-index2+index3)) * (break3**(-index3+index4)) * (break4**(-index4+index5))
+        if num_breaks >= 5:
+            model[np.where(cond[4])] = normal * (x[np.where(cond[4])]**(-index6)) * (break1**(-index1+index2)) * (break2**(-index2+index3)) * (break3**(-index3+index4)) * (break4**(-index4+index5)) * (break5**(-index5+index6))
+
+        return model - data
+
+    def powerlaw2(params, x, data):
+        index1 = params['index1']
+        index2 = params['index2']
+        index3 = params['index3']
+        break1 = params['break1']
+        break2 = params['break2']
+        normal = params['normal']
+
+
+        
+
+        model = normal * (x**(-index1))
+        model[np.where(x > break1)] = normal * (x[np.where(x>break1)]**(-index2)) * (break1**(-index1+index2))
+        return model - data
+
+
     def powerlaw_1break(beta, x):
         count = 1
-        a1, a2, b1, norm = beta
-        funclist = [lambda x: norm * (x**(-a1)), \
-                    lambda x: norm * (x**(-a2)) * (b1**(-a1+a2)) ]
-        condlist = [x <= b1, \
-                    x > b1]
+        index1, index2, break1, norm = beta
+        funclist = [lambda x: norm * (x**(-index1)), \
+                    lambda x: norm * (x**(-index2)) * (break1**(-index1+index2)) ]
+        condlist = [x <= break1, \
+                    x > break1]
         return np.piecewise(x, condlist, funclist)
 
     def powerlaw_2break(beta, x):
         count = 2
-        a1, a2, a3, b1, b2, norm = beta
-        funclist = [lambda x: norm * (x**(-a1)), \
-                    lambda x: norm * (x**(-a2)) * (b1**(-a1+a2)), \
-                    lambda x: norm * (x**(-a3)) * (b1**(-a1+a2)) * (b2**(-a2+a3))]
-        condlist = [x <= b1, \
-                    np.logical_and(x > b1, x <= b2), \
-                    x > b2]
+        index1, index2, index3, break1, break2, norm = beta
+        funclist = [lambda x: norm * (x**(-index1)), \
+                    lambda x: norm * (x**(-index2)) * (break1**(-index1+index2)), \
+                    lambda x: norm * (x**(-index3)) * (break1**(-index1+index2)) * (break2**(-index2+index3))]
+        condlist = [x <= break1, \
+                    np.logical_and(x > break1, x <= break2), \
+                    x > break2]
         return np.piecewise(x, condlist, funclist)
 
     def powerlaw_3break(beta, x):
         count = 3
-        a1, a2, a3, a4, b1, b2, b3, norm = beta
-        funclist = [lambda x: norm * (x**(-a1)), \
-                    lambda x: norm * (x**(-a2)) * (b1**(-a1+a2)), \
-                    lambda x: norm * (x**(-a3)) * (b1**(-a1+a2)) * (b2**(-a2+a3)), \
-                    lambda x: norm * (x**(-a4)) * (b1**(-a1+a2)) * (b2**(-a2+a3)) * (b3**(-a3+a4)) ]
-        condlist = [x <= b1, \
-                    np.logical_and(x > b1, x <=b2), \
-                    np.logical_and(x > b2, x <= b3), \
-                    x > b3]
+        index1, index2, index3, index4, break1, break2, break3, norm = beta
+        funclist = [lambda x: norm * (x**(-index1)), \
+                    lambda x: norm * (x**(-index2)) * (break1**(-index1+index2)), \
+                    lambda x: norm * (x**(-index3)) * (break1**(-index1+index2)) * (break2**(-index2+index3)), \
+                    lambda x: norm * (x**(-index4)) * (break1**(-index1+index2)) * (break2**(-index2+index3)) * (break3**(-index3+index4)) ]
+        condlist = [x <= break1, \
+                    np.logical_and(x > break1, x <=break2), \
+                    np.logical_and(x > break2, x <= break3), \
+                    x > break3]
         return np.piecewise(x, condlist, funclist)
 
     def powerlaw_4break(beta, x):
         count = 4
-        a1, a2, a3, a4, a5, b1, b2, b3, b4, norm = beta
-        funclist = [lambda x: norm * (x**(-a1)), \
-                    lambda x: norm * (x**(-a2)) * (b1**(-a1+a2)), \
-                    lambda x: norm * (x**(-a3)) * (b1**(-a1+a2)) * (b2**(-a2+a3)), \
-                    lambda x: norm * (x**(-a4)) * (b1**(-a1+a2)) * (b2**(-a2+a3)) * (b3**(-a3+a4)), \
-                    lambda x: norm * (x**(-a5)) * (b1**(-a1+a2)) * (b2**(-a2+a3)) * (b3**(-a3+a4)) * (b4**(-a4+a5)) ]
-        condlist = [x <= b1, \
-                    np.logical_and(x > b1, x <= b2), \
-                    np.logical_and(x > b2, x <= b3), \
-                    np.logical_and(x > b3, x <= b4), \
-                    x > b4]
+        index1, index2, index3, index4, index5, break1, break2, break3, break4, norm = beta
+        funclist = [lambda x: norm * (x**(-index1)), \
+                    lambda x: norm * (x**(-index2)) * (break1**(-index1+index2)), \
+                    lambda x: norm * (x**(-index3)) * (break1**(-index1+index2)) * (break2**(-index2+index3)), \
+                    lambda x: norm * (x**(-index4)) * (break1**(-index1+index2)) * (break2**(-index2+index3)) * (break3**(-index3+index4)), \
+                    lambda x: norm * (x**(-index5)) * (break1**(-index1+index2)) * (break2**(-index2+index3)) * (break3**(-index3+index4)) * (break4**(-index4+index5)) ]
+        condlist = [x <= break1, \
+                    np.logical_and(x > break1, x <= break2), \
+                    np.logical_and(x > break2, x <= break3), \
+                    np.logical_and(x > break3, x <= break4), \
+                    x > break4]
 
         return np.piecewise(x, condlist, funclist)
 
     def powerlaw_5break(beta, x):
         count = 5
-        a1, a2, a3, a4, a5, a6, b1, b2, b3, b4, b5, norm = beta
+        index1, index2, index3, index4, index5, index6, break1, break2, break3, break4, break5, norm = beta
 
-        funclist = [lambda x: norm * (x**(-a1)), \
-                    lambda x: norm * (x**(-a2)) * (b1**(-a1+a2)), \
-                    lambda x: norm * (x**(-a3)) * (b1**(-a1+a2)) * (b2**(-a2+a3)), \
-                    lambda x: norm * (x**(-a4)) * (b1**(-a1+a2)) * (b2**(-a2+a3)) * (b3**(-a3+a4)), \
-                    lambda x: norm * (x**(-a5)) * (b1**(-a1+a2)) * (b2**(-a2+a3)) * (b3**(-a3+a4)) * (b4**(-a4+a5)),
-                    lambda x: norm * (x**(-a6)) * (b1**(-a1+a2)) * (b2**(-a2+a3)) * (b3**(-a3+a4)) * (b4**(-a4+a5)) * (b5**(-a5+a6)) ]
-        condlist = [x <= b1, \
-                    np.logical_and(x > b1, x <= b2), \
-                    np.logical_and(x > b2, x <= b3), \
-                    np.logical_and(x > b3, x <= b4), \
-                    np.logical_and(x > b4, x <= b5), \
-                    x > b5]
+        funclist = [lambda x: norm * (x**(-index1)), \
+                    lambda x: norm * (x**(-index2)) * (break1**(-index1+index2)), \
+                    lambda x: norm * (x**(-index3)) * (break1**(-index1+index2)) * (break2**(-index2+index3)), \
+                    lambda x: norm * (x**(-index4)) * (break1**(-index1+index2)) * (break2**(-index2+index3)) * (break3**(-index3+index4)), \
+                    lambda x: norm * (x**(-index5)) * (break1**(-index1+index2)) * (break2**(-index2+index3)) * (break3**(-index3+index4)) * (break4**(-index4+index5)),
+                    lambda x: norm * (x**(-index6)) * (break1**(-index1+index2)) * (break2**(-index2+index3)) * (break3**(-index3+index4)) * (break4**(-index4+index5)) * (break5**(-index5+index6)) ]
+        condlist = [x <= break1, \
+                    np.logical_and(x > break1, x <= break2), \
+                    np.logical_and(x > break2, x <= break3), \
+                    np.logical_and(x > break3, x <= break4), \
+                    np.logical_and(x > break4, x <= break5), \
+                    x > break5]
         return np.piecewise(x, condlist, funclist)
 
     def flare_gaussian(beta, x):

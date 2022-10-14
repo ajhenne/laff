@@ -3,6 +3,7 @@
 
 __version__ = "0.4.3"
 
+from inspect import Parameter
 import sys
 import argparse
 import warnings
@@ -14,6 +15,8 @@ from operator import itemgetter
 from csv import writer
 from os.path import exists
 import scipy.integrate as integrate
+
+from lmfit import Minimizer, Parameters, report_fit
 
 from .models import Models
 from .lcimport import Imports
@@ -107,6 +110,50 @@ def main():
         beginning = data.index >= start
         end = data.index <= decay
         data.loc[beginning & end, 'flare'] = True
+
+    
+    ## FIT CONTINUUM
+
+    data_continuum = data[data['flare'] == False]
+
+    params = Parameters()
+
+    b1, b2, b3, b4, b5 = np.logspace(np.log10(data['time'].iloc[0] ) * 1.1, \
+                                     np.log10(data['time'].iloc[-1]) * 0.9, \
+                                     num=5)
+
+    maxtime = tableValue(data,-1,'time')
+
+    params.add('num_breaks', value=4, vary=False)
+
+    params.add('index1', value=1, min=0, max=4)
+    params.add('index2', value=1, min=0, max=4)
+    params.add('index3', value=1, min=0, max=4)
+    params.add('index4', value=1, min=0, max=4)
+    params.add('index5', value=1, min=0, max=4)
+    params.add('index6', value=1, min=0, max=4)
+
+
+    params.add('break1', value=b1, min=0, max=maxtime)
+    params.add('break2', value=b2, min=0, max=maxtime)
+    params.add('break3', value=b3, min=0, max=maxtime)
+    params.add('break4', value=b4, min=0, max=maxtime)
+    params.add('break5', value=b5, min=0, max=maxtime)
+
+    params.add('normal', value=1e3)
+
+    minner = Minimizer(Models.powerlaw, params, fcn_args=(np.array(data_continuum.time), np.array(data_continuum.flux)))
+
+    results= minner.least_squares()
+
+    final = np.array(data_continuum.flux) + results.residual
+
+    report_fit(results)
+
+    plt.plot(data.time, data.flux, '.')
+    plt.plot(data_continuum.time, final)
+    plt.loglog()
+    plt.show()
 
     ### FIT CONTINUUM
     data_excluded = data[data['flare'] == False]
