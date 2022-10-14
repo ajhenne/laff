@@ -4,8 +4,10 @@
 __version__ = "0.4.3"
 
 from inspect import Parameter
+import string
 import sys
 import argparse
+from tkinter import E
 import warnings
 import pandas as pd
 import numpy as np
@@ -75,8 +77,7 @@ if args.mission:
     if args.mission[0] in swiftbulk:
         mission = swiftbulk
     else:
-        print("ERROR: filetype '%s' not supported." % args.mission[0])
-        sys.exit(1)
+        raise ValueError("ERROR: filetype '%s' not supported." % args.mission[0])
 
 ### Force certain fits.
 if args.breaks:
@@ -96,7 +97,10 @@ else:
 
 def main():
 
-    data = importData(input_path, mission)
+    try:
+        data = importData(input_path, mission)
+    except:
+        raise ValueError('Could not find valid file at %s.' % input_path)
 
     #### FIND FLARES
     fl_start, fl_peak, fl_end = FlareFinder(data)
@@ -115,45 +119,27 @@ def main():
     ## FIT CONTINUUM
 
     data_continuum = data[data['flare'] == False]
-
     params = Parameters()
-
-    b1, b2, b3, b4, b5 = np.logspace(np.log10(data['time'].iloc[0] ) * 1.1, \
-                                     np.log10(data['time'].iloc[-1]) * 0.9, \
-                                     num=5)
-
+    mintime = tableValue(data,0,'time')
     maxtime = tableValue(data,-1,'time')
 
-    params.add('num_breaks', value=4, vary=False)
+    number_breaks = 5
 
-    params.add('index1', value=1, min=0, max=4)
-    params.add('index2', value=1, min=0, max=4)
-    params.add('index3', value=1, min=0, max=4)
-    params.add('index4', value=1, min=0, max=4)
-    params.add('index5', value=1, min=0, max=4)
-    params.add('index6', value=1, min=0, max=4)
+    # Initialise all parameters based on the number of breaks.
+    params = initParams(number_breaks, mintime, maxtime, params)
 
-
-    params.add('break1', value=b1, min=0, max=maxtime)
-    params.add('break2', value=b2, min=0, max=maxtime)
-    params.add('break3', value=b3, min=0, max=maxtime)
-    params.add('break4', value=b4, min=0, max=maxtime)
-    params.add('break5', value=b5, min=0, max=maxtime)
-
-    params.add('normal', value=1e3)
-
+    # Perform the fit.
     minner = Minimizer(Models.powerlaw, params, fcn_args=(np.array(data_continuum.time), np.array(data_continuum.flux)))
-
-    results= minner.least_squares()
+    results = minner.least_squares()
 
     final = np.array(data_continuum.flux) + results.residual
-
     report_fit(results)
 
     plt.plot(data.time, data.flux, '.')
     plt.plot(data_continuum.time, final)
     plt.loglog()
     plt.show()
+
 
     ### FIT CONTINUUM
     data_excluded = data[data['flare'] == False]
@@ -341,6 +327,43 @@ def finddecay(data,peak,index_start):
 ###############################################################
 ### CONTINUUM FITTING
 ###############################################################
+
+def init_params_indices(number_breaks, params):
+    indices = []
+    # Setup parameter names.
+    for i in range(number_breaks+1):
+        indices.append('index%s' % (i+1))
+    # Initilise with standard variable ranges.
+    for index in indices:
+        params.add(index, value=1, min=-0.2, max=3.8)
+    return params
+
+def init_params_breaks(number_breaks, mintime, maxtime, params):
+    powerlawbreaks = []
+    # Initial value estimates.
+    initial_breaks = [mintime, *np.logspace(np.log10(mintime * 1.1), np.log10(maxtime) * 0.9, num=number_breaks), maxtime]
+    # Setup parameter names.
+    for i in range(number_breaks):
+        powerlawbreaks.append('break%s' % (i+1))
+    # Assign initial parameter values and bounds.
+    for i in range(len(powerlawbreaks)):
+        params.add(powerlawbreaks[i], value=initial_breaks[i+1], \
+                min=initial_breaks[i], max=initial_breaks[i+2])
+    return params
+
+def initParams(number_breaks, mintime, maxtime, params):
+    # Remove any old parameters (???)
+    params = None
+    params = Parameters()
+    # Create break number parameter.
+    params.add('num_breaks', value=number_breaks, vary=False)
+    # Create index parameters.
+    init_params_indices(number_breaks, params)
+    # Create break parameters.
+    init_params_breaks(number_breaks, mintime, maxtime, params)
+    # Create normalisation parameters.
+    params.add('normal', value=1)
+    return params
 
 def modelfitter(data, model, inputpar):
     model = Model(model)
