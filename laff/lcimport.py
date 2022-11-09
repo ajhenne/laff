@@ -49,7 +49,7 @@ class Imports(object):
             'col1': 'time', 'col1_perr': 'time_perr', 'col1_nerr': 'time_nerr',
             'col2': 'flux', 'col2_perr': 'flux_perr', 'col2_nerr': 'flux_nerr'})
         data['flare'] = False
-
+        data['flare_ext'] = False
         return data
 
     def swift_bulk(filepath):
@@ -81,7 +81,7 @@ class Imports(object):
             'col1': 'time', 'col1_perr': 'time_perr', 'col1_nerr': 'time_nerr',
             'col2': 'flux', 'col2_perr': 'flux_perr', 'col2_nerr': 'flux_nerr'})
         data['flare'] = False
-
+        data['flare_ext'] = False
         data = None if len(data) <= 3 else data # Seems to break if data <= 3.
 
         return data
