@@ -1,18 +1,19 @@
+from lib2to3.pgen2.token import AMPER
 import numpy as np
 from lmfit import Minimizer, Parameters, report_fit
+import math
 
 """laff.models: models module within the laff package."""
 
 class Models(object):
 
-    def powerlaw(params, x, data):
+    def powerlaw(params, x, data=None, sigma=None):
         num_breaks = params['num_breaks']
+        normal = params['normal']
 
         # Initialise all possible parameters such that they exist.
         index1, index2, index3, index4, index5, index6 = 0,0,0,0,0,0
         break1, break2, break3, break4, break5 = 0,0,0,0,0
-
-        # Assign param
         if num_breaks >= 0:
             index1 = params['index1']
         if num_breaks >= 1:
@@ -31,16 +32,6 @@ class Models(object):
             index6 = params['index6']
             break5 = params['break5']
 
-        normal = params['normal']
-
-        # NEXT CHANGE THE UPPER AND LOWER LIMITS ON THE VALUES FOR EACH LOOP
-        # UPPER AND LOWER LIMIT SHOULD BE BASED ON THE LATEST BREAK VALUES FOUND
-
-        # break1.max = break2.value
-        # break2.max = break3.value
-        # break3.max = break4.value
-        # break4.max = break5.value
-
         cond = [x > break1, x > break2, x > break3, x > break4, x > break5]
 
         if num_breaks >= 0:
@@ -56,77 +47,30 @@ class Models(object):
         if num_breaks >= 5:
             model[np.where(cond[4])] = normal * (x[np.where(cond[4])]**(-index6)) * (break1**(-index1+index2)) * (break2**(-index2+index3)) * (break3**(-index3+index4)) * (break4**(-index4+index5)) * (break5**(-index5+index6))
 
-        return model - data
+        return (data - model)/sigma if data is not None else model
 
+    def flareGaussian(params, x, data=None):
+        height = params['height']
+        centre = params['centre']
+        width  = params['width']
 
+        model = height * np.exp(-((x-centre)**2)/(2*(width**2)))
 
-    def powerlaw_1break(beta, x):
-        count = 1
-        index1, index2, break1, norm = beta
-        funclist = [lambda x: norm * (x**(-index1)), \
-                    lambda x: norm * (x**(-index2)) * (break1**(-index1+index2)) ]
-        condlist = [x <= break1, \
-                    x > break1]
-        return np.piecewise(x, condlist, funclist)
+        return (model - data) if data is not None else model
 
-    def powerlaw_2break(beta, x):
-        count = 2
-        index1, index2, index3, break1, break2, norm = beta
-        funclist = [lambda x: norm * (x**(-index1)), \
-                    lambda x: norm * (x**(-index2)) * (break1**(-index1+index2)), \
-                    lambda x: norm * (x**(-index3)) * (break1**(-index1+index2)) * (break2**(-index2+index3))]
-        condlist = [x <= break1, \
-                    np.logical_and(x > break1, x <= break2), \
-                    x > break2]
-        return np.piecewise(x, condlist, funclist)
+    def flareFred(params, x, data=None):
 
-    def powerlaw_3break(beta, x):
-        count = 3
-        index1, index2, index3, index4, break1, break2, break3, norm = beta
-        funclist = [lambda x: norm * (x**(-index1)), \
-                    lambda x: norm * (x**(-index2)) * (break1**(-index1+index2)), \
-                    lambda x: norm * (x**(-index3)) * (break1**(-index1+index2)) * (break2**(-index2+index3)), \
-                    lambda x: norm * (x**(-index4)) * (break1**(-index1+index2)) * (break2**(-index2+index3)) * (break3**(-index3+index4)) ]
-        condlist = [x <= break1, \
-                    np.logical_and(x > break1, x <=break2), \
-                    np.logical_and(x > break2, x <= break3), \
-                    x > break3]
-        return np.piecewise(x, condlist, funclist)
+        rise  = params['rise'].value      # use 1/4 width
+        decay = params['decay'].value     # use 3/4 width
+        time  = params['time'].value      # use centre
+        amp   = params['amp'].value # use height
 
-    def powerlaw_4break(beta, x):
-        count = 4
-        index1, index2, index3, index4, index5, break1, break2, break3, break4, norm = beta
-        funclist = [lambda x: norm * (x**(-index1)), \
-                    lambda x: norm * (x**(-index2)) * (break1**(-index1+index2)), \
-                    lambda x: norm * (x**(-index3)) * (break1**(-index1+index2)) * (break2**(-index2+index3)), \
-                    lambda x: norm * (x**(-index4)) * (break1**(-index1+index2)) * (break2**(-index2+index3)) * (break3**(-index3+index4)), \
-                    lambda x: norm * (x**(-index5)) * (break1**(-index1+index2)) * (break2**(-index2+index3)) * (break3**(-index3+index4)) * (break4**(-index4+index5)) ]
-        condlist = [x <= break1, \
-                    np.logical_and(x > break1, x <= break2), \
-                    np.logical_and(x > break2, x <= break3), \
-                    np.logical_and(x > break3, x <= break4), \
-                    x > break4]
+        model = amp * np.exp(-(rise/(x-time))-((x-time)/decay))
 
-        return np.piecewise(x, condlist, funclist)
+        for idx, number in enumerate(model):
+            if np.isinf(number) or np.isnan(number):
+                model[idx] = model[idx-1]
+            if number < 0 or number > amp:
+                model[idx] = 0
 
-    def powerlaw_5break(beta, x):
-        count = 5
-        index1, index2, index3, index4, index5, index6, break1, break2, break3, break4, break5, norm = beta
-
-        funclist = [lambda x: norm * (x**(-index1)), \
-                    lambda x: norm * (x**(-index2)) * (break1**(-index1+index2)), \
-                    lambda x: norm * (x**(-index3)) * (break1**(-index1+index2)) * (break2**(-index2+index3)), \
-                    lambda x: norm * (x**(-index4)) * (break1**(-index1+index2)) * (break2**(-index2+index3)) * (break3**(-index3+index4)), \
-                    lambda x: norm * (x**(-index5)) * (break1**(-index1+index2)) * (break2**(-index2+index3)) * (break3**(-index3+index4)) * (break4**(-index4+index5)),
-                    lambda x: norm * (x**(-index6)) * (break1**(-index1+index2)) * (break2**(-index2+index3)) * (break3**(-index3+index4)) * (break4**(-index4+index5)) * (break5**(-index5+index6)) ]
-        condlist = [x <= break1, \
-                    np.logical_and(x > break1, x <= break2), \
-                    np.logical_and(x > break2, x <= break3), \
-                    np.logical_and(x > break3, x <= break4), \
-                    np.logical_and(x > break4, x <= break5), \
-                    x > break5]
-        return np.piecewise(x, condlist, funclist)
-
-    def flare_gaussian(beta, x):
-        height, centre, width = beta
-        return height * np.exp(-((x-centre)**2)/(2*(width**2)))
+        return (model-data) if data is not None else model
