@@ -14,7 +14,7 @@ with open("README.rst", "rb") as f:
     long_descr = f.read().decode("utf-8")
 
 requirements = ["astropy>=5.1","pandas>=1.4.3","matplotlib>=3.5.2", "scipy>=1.8.0","numpy>=1.23", \
-    "argparse>=1.4"]
+    "argparse>=1.4", "lmfit>=1.0.3"]
 
 setup(
     name = "laff",
