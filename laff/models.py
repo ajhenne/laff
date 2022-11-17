@@ -60,10 +60,10 @@ class Models(object):
 
     def flareFred(params, x, data=None):
 
-        rise  = params['rise'].value      # use 1/4 width
-        decay = params['decay'].value     # use 3/4 width
-        time  = params['time'].value      # use centre
-        amp   = params['amp'].value # use height
+        rise  = params['rise']      # use 1/4 width
+        decay = params['decay']     # use 3/4 width
+        time  = params['time']     # use centre
+        amp   = params['amp'] # use height
 
         model = amp * np.exp(-(rise/(x-time))-((x-time)/decay))
 
