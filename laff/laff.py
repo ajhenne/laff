@@ -16,6 +16,13 @@ from lmfit import Minimizer, Parameters, report_fit
 
 from .models import Models
 from .lcimport import Imports
+from .classes import Flare
+
+p1 = Flare()
+
+print(p1.test)
+
+print('fsetsd')
 
 # Silence the double scalar warnings.
 warnings.filterwarnings("ignore")
@@ -426,7 +433,6 @@ def fitFlares(data, residuals, flares):
                 flarelist[2].remove(end)
                 data.flare[start:end] = False
                 data.flare_ext[start:end] = False
-                print('removed')
                 continue
 
             # Store parameters and add to residuals.

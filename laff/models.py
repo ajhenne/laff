@@ -1,7 +1,4 @@
-from lib2to3.pgen2.token import AMPER
 import numpy as np
-from lmfit import Minimizer, Parameters, report_fit
-import math
 
 """laff.models: models module within the laff package."""
 
