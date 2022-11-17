@@ -481,7 +481,7 @@ def printResults(continuumParams, flareParams):
     print(line)
 
     N = len(continuumParams)
-    print("%s flares found" % len(flareParams))
+    print("%s flares found" % len(flarelist))
     print("%s powerlaw breaks found" % continuumParams['num_breaks'].value)
     # print("Chi-square:", round(stats[0],2))
     # print("Reduced chi-square:", round(stats[1],2))
@@ -502,7 +502,7 @@ def printResults_verbose(data, continuumParams, flares):
 
     print(line)
 
-    print("[[ Flares (sec) -- %s found ]]" % len(flareParams))
+    print("[[ Flares (sec) -- %s found ]]" % len(flarelist))
     print("Start\t\tPeak\t\tEnd\t\t")
     for start, peak, decay in zip(start, peak, decay):
         times = [round(tableValue(data,x,'time'),2) for x in (start,peak,decay)]
