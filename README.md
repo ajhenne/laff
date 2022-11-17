@@ -26,14 +26,15 @@ To run the program, the user simply needs to point LAFF towards an appropriate l
 * matplotlib (v3.5 or newer)
 * scipy (v1.8 or newer)
 * numpy (v1.23 or newer)
+
 All available through standard python package installation methods (e.g. pip). Earlier versions of these may work but have not been explicility tested.
 
 ### Installing
 
 To download as pip package:
-'''
+```
 pip install laff
-'''
+```
 
 ### Executing program
 
