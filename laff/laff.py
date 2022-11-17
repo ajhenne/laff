@@ -12,7 +12,6 @@ from operator import itemgetter
 from csv import writer
 from os.path import exists
 import scipy.integrate as integrate
-
 from lmfit import Minimizer, Parameters, report_fit
 
 from .models import Models
@@ -115,8 +114,11 @@ def main():
         data.loc[beg & end, 'flare'] = True
 
         beg_ext = data.index > start
-        end_ext = data.index < decay
+        end_ext = data.index < decay 
         data.loc[beg_ext & end_ext, 'flare_ext'] = True
+
+        print(data.index[np.where(data['flare'] == True)])
+        print(data.index[np.where(data['flare_ext'] == True)])
 
     ###### [ FIT CONTINUUM ] ######
 
@@ -351,7 +353,7 @@ def calculateSigma(data, continuum=False):
     sigma = np.array(data.flux_perr)
 
     # Assign less sigma to points at the start and end of flare.
-    sigma[np.where(data.flare == True)] *= 1e-2
+    sigma[np.where(data.flare == True)] *= 1e-5
 
     # Remove flare data if required.
     sigma_red = sigma[data['flare_ext'] == False]
@@ -394,8 +396,10 @@ def init_params_breaks(number_breaks, mintime, maxtime, params):
         powerlawbreaks.append('break%s' % (i+1))
     # Assign initial parameter values and bounds.
     for i in range(len(powerlawbreaks)):
+        # params.add(powerlawbreaks[i], value=initial_breaks[i+1], \
+        #         min=initial_breaks[i], max=initial_breaks[i+2])
         params.add(powerlawbreaks[i], value=initial_breaks[i+1], \
-                min=initial_breaks[i], max=initial_breaks[i+2])
+            min = initial_breaks[0], max=initial_breaks[-1])
     return params
 
 ###############################################################
@@ -421,6 +425,8 @@ def fitFlares(data, residuals, flares):
                 flarelist[0].remove(start)
                 flarelist[1].remove(peak)
                 flarelist[2].remove(end)
+                data.flare[start:end] = False
+                data.flare_ext[start:end] = False
                 print('removed')
                 continue
 
@@ -555,7 +561,7 @@ def plotResults(data, finalModel, finalParameters):
     marker='', linestyle='None', capsize=0)
 
     # Plot flare data.
-    flaretime = data.flare_ext == True
+    flaretime = data.flare == True
     plt.errorbar(data.time[flaretime], data.flux[flaretime],\
         xerr=[-data.time_nerr[flaretime], data.time_perr[flaretime]], \
         yerr=[-data.flux_nerr[flaretime], data.flux_perr[flaretime]], \
