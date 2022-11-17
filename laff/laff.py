@@ -117,9 +117,6 @@ def main():
         end_ext = data.index < decay 
         data.loc[beg_ext & end_ext, 'flare_ext'] = True
 
-        print(data.index[np.where(data['flare'] == True)])
-        print(data.index[np.where(data['flare_ext'] == True)])
-
     ###### [ FIT CONTINUUM ] ######
 
     # Ignore the flare data.
@@ -234,7 +231,7 @@ def importData(data, mission):
 ###############################################################
 
 def FlareFinder(data):
-    
+
     # Identify deviations as possible flares.
     possible_flares = []
     for index in data.index[data.time < 2000]:
@@ -262,7 +259,6 @@ def FlareFinder(data):
 
     return index_start, index_peak, index_decay
 
-
 def potentialflare(data,index):
     # Store ranges of 8 consecutive values at a time.
     consecutive = []
@@ -271,7 +267,6 @@ def potentialflare(data,index):
             consecutive.append(tableValue(data,index+i,"flux"))
         except:
             pass
-
     # Check conditions.
     counter = 0
     for check in consecutive:
@@ -286,7 +281,6 @@ def potentialflare(data,index):
     else:
         counter = 0
         return False   
-
 
 def findstart(data,possiblestart):
     minval = min([tableValue(data,possiblestart+i,"flux") \
@@ -308,16 +302,21 @@ def findpeak(data,start,index_start):
 def finddecay(data,peak,index_start):
     condition = 0
     i = peak + 1
-    while condition < DECAYCONDITION:
+    while condition < DECAYCONDITION: #default: 3
         # If too late, or it reaches a flare start, end immediately.
         if (tableValue(data,i,'time') > 2000) or (i in index_start):
             return i - 2
 
         # If all three conditions are met, add to counter.
-        if slope(data, i, i+1) > slope(data, peak, i):
-            if slope(data, i, i+1) > slope(data, i-1, i):
-                if slope(data, peak, i) > slope(data, peak, i-1):
-                    condition += 1
+
+        con_1 = slope(data, i, i+1) > slope(data, peak, i)      # gradient from i->i+1 is shallower than peak->i (shallower than line to peak)
+        con_2 = slope(data, i, i+1) > slope(data, i-1, i)       # gradient from i->i+1 is shallower than i-1->i (shallower point to point)
+        con_3 = slope(data, peak, i) > slope(data, peak, i-1)   # gradient from peak->i is shallower than peak->i-1 (shallower peak to i than peak to previous i)
+
+        if con_1 and con_2 and con_3:
+            condition += 1
+        elif con_1 and not con_2 and con_3:
+            condition -= 0.5
         i += 1
     return i
 
