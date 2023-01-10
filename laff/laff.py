@@ -14,21 +14,19 @@ from os.path import exists
 import scipy.integrate as integrate
 from lmfit import Minimizer, Parameters, report_fit
 
+# Import local laff modules.
 from .models import Models
 from .lcimport import Imports
 from .classes import Flare
 
-p1 = Flare()
-
-print(p1.test)
-
-print('fsetsd')
-
 # Silence the double scalar warnings.
 warnings.filterwarnings("ignore")
 
-parser = argparse.ArgumentParser(description="Lightcurve and flare fitter for GRBs", prog='laff')
+###############################################################
+### USER ARGUMENTS
+###############################################################
 
+parser = argparse.ArgumentParser(description="Lightcurve and flare fitter for GRBs", prog='laff')
 parser.add_argument('--version', action='version', version=__version__)
 parser.add_argument('data', nargs=1, metavar='data_filepath', type=str, help='Path to the input datafile.')
 
@@ -46,6 +44,10 @@ parser.add_argument('-q', '--quiet', action='store_true', help="Don't produce an
 parser.add_argument('-m', '--mission', nargs=1, metavar='mission', help='Changed the input mission/filetype (default: Swift/XRT .qdp).')
 
 args = parser.parse_args()
+
+###############################################################
+### ARGUMENTS
+###############################################################
 
 ### Data filepath.
 input_path = args.data[0]
@@ -69,7 +71,6 @@ else:
 ### Filetype.
 swiftxrt  = ('swift', 'xrt', 'swiftxrt')     # Swift-XRT
 swiftbulk = ('swiftbulk', 'bulk', 'xrtbulk') # Swift-XRT (bulk)
-
 mission = swiftxrt # Default filetype.
 
 if args.mission:
@@ -92,6 +93,10 @@ if args.breaks:
 else:
     force = False
 
+###############################################################
+### MISC SETUP
+###############################################################  
+
 ### Flare function shape. Default to gaussian.
 flareFunction = Models.flareFred
 
@@ -104,6 +109,7 @@ line = "//-===============-"
 
 def main():
 
+    ###### [ IMPORT DATA ] ######
     try:
         data = importData(input_path, mission)
     except:
@@ -114,15 +120,25 @@ def main():
     # Flare finding function.
     fl_start, fl_peak, fl_end = FlareFinder(data)
 
+    # List to contain Flare objects.
+    FlareList = []
+
+    # Assign each flare to Flare class.
+    for start, peak, decay in zip(fl_start, fl_peak, fl_end):        
+        FlareList.append(Flare(start, peak, decay))
+
     # Assign flare times in table.
-    for start, decay in zip(fl_start, fl_end):
+    for flare in FlareList:
+        start, peak, decay = flare.returnTimes()
+
         beg = data.index >= start
         end = data.index <= decay
         data.loc[beg & end, 'flare'] = True
 
-        beg_ext = data.index > start
-        end_ext = data.index < decay 
-        data.loc[beg_ext & end_ext, 'flare_ext'] = True
+        beg = data.index > start
+        end = data.index < decay
+
+        data.loc[beg & end, 'flare_ext'] = True
 
     ###### [ FIT CONTINUUM ] ######
 
@@ -144,19 +160,15 @@ def main():
     gen = (x for x in continuum_fits)
     ContinuumParameters = min(gen, key=itemgetter(1))[0]
 
-    # Calculate residuals including flare data.
+    # Calculate residuals - perfect case is just flares leftover.
     continuum_residuals = data.flux - Models.powerlaw(ContinuumParameters, np.array(data.time))
 
     ###### [ FIT FLARES ] ######
 
-    global flarelist
-    flarelist = [fl_start, fl_peak, fl_end]
+    sigma = calculateSigma(data, reset=True)
 
-    FlareParameters, flare_residuals = fitFlares(data, continuum_residuals, flarelist)
+    FlareParameters, flare_residuals = fitFlares(data, continuum_residuals, FlareList)
     # Is flare_residuals needed?
-
-    # Is this needed?
-    # FinalResiduals = data.flux - (continuum_residuals + flare_residuals)
 
     constant_range = np.logspace(np.log10(data['time'].iloc[0]),
                                  np.log10(data['time'].iloc[-1]), num=2000)
@@ -165,6 +177,7 @@ def main():
     finalModel = Models.powerlaw(ContinuumParameters, constant_range)
     for flare in FlareParameters:
         finalModel += flareFunction(flare, constant_range)
+
 
     ### CALCULATE FLUENCES
 
@@ -186,7 +199,7 @@ def main():
     # flarecount = len(fluence_flare)
     # fluences = [fluence_full[0], *[fluence_flare[i][i+1] for i in range(flarecount)], fluence_full[0]+sum([fluence_flare[i][i+1] for i in range(flarecount)])]
 
-    ### FINISHING UP
+    ###### [ FINISHING UP ] ######
 
     # Print results to terminal.
     if not args.quiet:
@@ -194,7 +207,7 @@ def main():
             printResults(ContinuumParameters, FlareParameters)
             # also print stats
         else:
-            printResults_verbose(data, ContinuumParameters, [flarelist, FlareParameters])
+            printResults_verbose(data, ContinuumParameters, FlareList)
             # also print stats and fluences
 
     # # Show the lightcurve plots.
@@ -227,7 +240,7 @@ def slope(data, p1, p2):
 def importData(data, mission):
     if mission == swiftxrt:
         data = Imports.swift_xrt(input_path)
-    if mission == swiftbulk:
+    elif mission == swiftbulk:
         data = Imports.swift_bulk(input_path)
     else:
         data = Imports.other() # eventually support other missions.
@@ -297,12 +310,33 @@ def findstart(data,possiblestart):
 
 
 def findpeak(data,start,index_start):
-    j = 0
-    while (max([tableValue(data,start+j+i,"flux") for i in range(0,4)]) > \
-            tableValue(data,start,"flux")) and (start+j+4 not in index_start):
-            j += 1
-    maxval = max([tableValue(data,start+j,"flux") for i in range (-5,5)])
-    peak = data[data['flux'] == maxval].index.values[0]
+    """Look for the peak by cycling through data and looking for a maximum.
+    
+    Start at point i+1, while he points in range n->n+4 have a maximum greater than the start flux
+    and n+1 hasn't reached the start of the next flare, keep cycling through i + 1. Once one of these
+    conditions are met we can end the loop.
+
+    At this point we're definitely past the peak, so we look through all values start -> i and look for
+    the maximum flux value: our peak, and return this.
+
+    """
+    i = 1
+
+    cond1 = max([tableValue(data,start+i+j,"flux") for j in range(0,4)]) > tableValue(data,start,"flux")
+    cond2 = start + i + 1 not in index_start
+    cond3 = start + i + 4 in data.index
+
+    while cond1 and cond2 and cond3:
+        i += 1
+        # Need to re-evaluate the conditions - better way surely?
+        cond1 = max([tableValue(data,start+i+j,"flux") for j in range(0,4)]) > tableValue(data,start,"flux")
+        cond2 = start + i + 1 not in index_start
+        cond3 = start + i + 4 in data.index
+
+    max_value = max([tableValue(data,start+k,"flux") for k in range(0, i+1)])
+
+    peak = data[data['flux'] == max_value].index.values[0]
+
     return peak
 
 
@@ -354,9 +388,12 @@ def fitContinuum(data, weights, mintime, maxtime):
     
     return continuum_fits
 
-def calculateSigma(data, continuum=False):
+def calculateSigma(data, continuum=False, reset=False):
     # Assign a weight based on uncertainty - less sigma is a more precise datapoint.
     sigma = np.array(data.flux_perr)
+
+    if reset:
+        return sigma
 
     # Assign less sigma to points at the start and end of flare.
     sigma[np.where(data.flare == True)] *= 1e-5
@@ -389,7 +426,7 @@ def init_params_indices(number_breaks, params):
         indices.append('index%s' % (i+1))
     # Initilise with standard variable ranges.
     for index in indices:
-        params.add(index, value=1, min=-0.2, max=3.8)
+        params.add(index, value=1, min=0, max=5)
     return params
 
 def init_params_breaks(number_breaks, mintime, maxtime, params):
@@ -412,42 +449,42 @@ def init_params_breaks(number_breaks, mintime, maxtime, params):
 ### FLARE FITTING
 ###############################################################
 
-def fitFlares(data, residuals, flares):
+def fitFlares(data, residuals, flarelist):
+
         flare_parameters = []
-        totalres = residuals # Temporarily combine all residuals.
         flare_residuals = 0
-        START, PEAK, END = flares
 
-        for start, peak, end in zip(START, PEAK, END):
-            # Initialise flare parameters.
-            params = initFlare(data, start, peak, end)
+        for flare in flarelist:
+            start, peak, end = flare.returnTimes()
 
-            # Fit flares.
-            fitter = Minimizer(flareFunction, params, fcn_args=(np.array(data.time[start:end+5]), np.array(residuals[start:end+5])))
+            params = initFlare(data, start, peak, end) # Initialise flare parameters.
+
+            # Fit to the residuals only in the highlighted flare time.
+            time = np.array(data.time[start:end])
+            y = np.array(residuals[start:end])
+
+            # Run fitting routine.
+            fitter = Minimizer(flareFunction, params, fcn_args=(time, y))
             results = fitter.least_squares()
-
             fittedFlare = flareFunction(results.params, np.array(data.time))
-            if max(fittedFlare) < (1e-3 * tableValue(data,start,'flux')):
-                flarelist[0].remove(start)
-                flarelist[1].remove(peak)
-                flarelist[2].remove(end)
-                data.flare[start:end] = False
-                data.flare_ext[start:end] = False
-                continue
 
-            # Store parameters and add to residuals.
+            # Store parameters and add residuals.
             flare_parameters.append(results.params)
-            totalres -= flareFunction(results.params, np.array(data.time))
-            flare_residuals += flareFunction(results.params, np.array(data.time))
+            flare.setParameters(results.params)
+            residuals -= flareFunction(results.params, np.array(data.time))
+            flare_residuals += fittedFlare
 
         return flare_parameters, residuals
 
 def initFlare(data, start, peak, end):
 
     # Calculate initial input values.
+    time_start = tableValue(data,start,"time")
+    time_end = tableValue(data,end,"time")
+
     height = tableValue(data,peak,"flux")
     centre = tableValue(data,peak,"time")
-    width  = tableValue(data,end,"time") - tableValue(data,start,"time")
+    width  = time_end - time_start
 
     # Setup parameters according to flare model.
     if flareFunction == Models.flareGaussian:
@@ -458,10 +495,18 @@ def initFlare(data, start, peak, end):
         return params
     elif flareFunction == Models.flareFred:
         params = Parameters()
-        params.add('rise',  value=0.25*width, min=0)
-        params.add('decay', value=0.75*width, min=0)
-        params.add('time',  value=centre)
-        params.add('amp',   value=height, min=0.0001, max=height)
+        params.add('peak', value=centre, vary=False)
+        params.add('rise', value=width*0.3, min=0, max=width*3)
+        params.add('decay', value=width*0.7, min=0, max=width*4)
+        params.add('amp', value=height, min=0)
+        params.add('sharp', value=1, min=0, max=15)
+        return params
+    elif flareFunction == Models.flareFred_archive:
+        params = Parameters()
+        params.add('rise',  value=0.25*width, min=0.1*width, max=1*width)
+        params.add('decay', value=0.75*width, min=0.1*width, max=2*width)
+        params.add('time',  value=centre, min=time_start, max=time_end)
+        params.add('amp',   value=height)
         return params
     else:
         raise ValueError('an unacceptable flare model appears to have been selected.')
@@ -478,7 +523,7 @@ def calculateFluence(powerlaw_func, flare_funclist, start, stop):
 ### OUTPUT
 ###############################################################
 
-def printResults(continuumParams, flareParams):
+def printResults(continuumParams, FlareList):
 
     print(line,"\nLightcurve and Flare Fitter | Version %s" % __version__)
     print("Contact: Adam Hennessy (ah724@leicester.ac.uk)")
@@ -487,7 +532,7 @@ def printResults(continuumParams, flareParams):
     print(line)
 
     N = len(continuumParams)
-    print("%s flares found" % len(flarelist))
+    print("%s flares found" % len(FlareList))
     print("%s powerlaw breaks found" % continuumParams['num_breaks'].value)
     # print("Chi-square:", round(stats[0],2))
     # print("Reduced chi-square:", round(stats[1],2))
@@ -497,10 +542,7 @@ def printResults(continuumParams, flareParams):
     print(line)
 
 
-def printResults_verbose(data, continuumParams, flares):
-
-    flareIndices, flareParams = flares
-    start, peak, decay = flareIndices
+def printResults_verbose(data, continuumParams, FlareList):
 
     print(line,"\nLightcurve and Flare Fitter | Version %s" % __version__)
     print("Contact: Adam Hennessy (ah724@leicester.ac.uk)")
@@ -508,11 +550,19 @@ def printResults_verbose(data, continuumParams, flares):
 
     print(line)
 
-    print("[[ Flares (sec) -- %s found ]]" % len(flarelist))
-    print("Start\t\tPeak\t\tEnd\t\t")
-    for start, peak, decay in zip(start, peak, decay):
-        times = [round(tableValue(data,x,'time'),2) for x in (start,peak,decay)]
-        print(*times, sep='\t\t')
+    print("[[ Flares (sec) -- %s found ]] \t\t\t \t\t[[ Fitted Parameters ]]" % len(FlareList))
+    print("Start\t\tPeak\t\tEnd\t\t \t\tT_Centre\tRise\t\tDecay\t\tAmplitude\tSharpness")
+
+    # ROUND THE PARAMETERS AND THEN ADD TITLE ROW
+    for flare in FlareList:
+        times = [round(tableValue(data,x,'time'),2) for x in (flare.start, flare.peak, flare.end)]
+        params = flare.returnParameters(pretty=True)
+
+        print(*times,' ',*params, sep='\t\t')
+
+    # for start, peak, decay in zip(start, peak, decay):
+    #     times = [round(tableValue(data,x,'time'),2) for x in (start,peak,decay)
+    #     print(*times,"rg", sep='\t\t')
 
     print(line)
 
@@ -559,6 +609,8 @@ def plotResults(data, finalModel, finalParameters):
     constant_range = np.logspace(np.log10(data['time'].iloc[0]),
                                  np.log10(data['time'].iloc[-1]), num=2000)
 
+    plt.figure(figsize=(10,7))
+
     # Plot lightcurve data.
     plt.errorbar(data.time, data.flux, \
         xerr=[-data.time_nerr, data.time_perr], \
@@ -594,13 +646,14 @@ def plotResults(data, finalModel, finalParameters):
     plt.ylim(y_bottom, y_top)
 
     plt.loglog()
+    # plt.savefig(f'results/{input_path[0:-4]}.png')
     plt.show()
 
 
 def produceOutput(data, start, peak, end, fluences):
 
     # If file doesn't exist yet, add header row.
-    headerList = ['name','flare#','start','peak','end','fluence','fluence_err']
+    headerList = ['name','flare_num','start','peak','end','fluence','fluence_err']
     if not exists(output_path):
         with open(output_path, 'w') as file:
             object = writer(file)

@@ -47,6 +47,7 @@ class Models(object):
         return (data - model)/sigma if data is not None else model
 
     def flareGaussian(params, x, data=None):
+        """Gaussian flare curve, always symmetrical so not always ideal."""
         height = params['height']
         centre = params['centre']
         width  = params['width']
@@ -56,7 +57,29 @@ class Models(object):
         return (model - data) if data is not None else model
 
     def flareFred(params, x, data=None):
+        """Fast-rise exponential-decay (FRED) curve."""
+        t_max = params['peak']
+        rise  = params['rise']
+        decay = params['decay']
+        sharp = params['sharp']
+        amp   = params['amp']
 
+        cond = x >= t_max
+        model = amp * np.exp(-((abs(x-t_max)/rise)**sharp))
+        model[np.where(cond)] = amp * np.exp(-((abs(x[np.where(cond)]-t_max)/decay)**sharp))
+
+        for idx, number in enumerate(model):
+            if np.isinf(number) or np.isnan(number):
+                raise ValueError('it appears there is an infinite or nan value, look at code comments.')
+                # if np.isinf(number) or np.isnan(number):
+                #     model[idx] = model[idx-1]
+                # if number < 0 or number > amp:
+                #     model[idx] = 0
+        return (model-data) if data is not None else model
+
+
+    def flareFred_archive(params, x, data=None):
+        """Old equation for a FRED curve, didn't work so neatly."""
         rise  = params['rise']      # use 1/4 width
         decay = params['decay']     # use 3/4 width
         time  = params['time']     # use centre
@@ -69,5 +92,4 @@ class Models(object):
                 model[idx] = model[idx-1]
             if number < 0 or number > amp:
                 model[idx] = 0
-
         return (model-data) if data is not None else model
