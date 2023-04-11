@@ -11,7 +11,7 @@
 import pandas as pd
 from astropy.table import Table, vstack
 
-def import_swift_xrt(filepath) -> pd.DataFrame:
+def import_swift_archive(filepath) -> pd.DataFrame:
     """
     Import a lightcurve from Swift-XRT.
     
@@ -29,6 +29,8 @@ def import_swift_xrt(filepath) -> pd.DataFrame:
             Formatted data table object.
     """
 
+    print('import_swift_xrt')
+
     qdptable = []
     i = 0
 
@@ -40,3 +42,4 @@ def import_swift_xrt(filepath) -> pd.DataFrame:
             i += 1
         except:
             if i > 0: break # No more tables.
+            i += 1
