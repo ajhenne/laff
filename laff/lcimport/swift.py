@@ -44,5 +44,6 @@ def lc_swift_online_archive(filepath) -> pd.DataFrame:
     data = vstack(qdptable).to_pandas()
     data = data.sort_values(by=['col1'])
     data = data.reset_index(drop=True)
+    data.columns = ['time', 'time_perr', 'time_nerr', 'flux', 'flux_perr', 'flux_nerr']
 
     return data
