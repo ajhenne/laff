@@ -1,3 +1,2 @@
+from .laff_settings import RUNPARAMETERS
 
-def testfunction():
-    print('yes')

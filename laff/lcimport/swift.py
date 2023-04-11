@@ -1,24 +1,20 @@
 ################################################################################
-# [ LAFF.LCIMPORT ]
+# [ LAFF.LCIMPORT.SWIFT ]
 ################################################################################
-# A collection of functions to import GRB lightcurves from various missions and
-# file formats.
-################################################################################
-# Currently supported:
-# > swift-xrt.qdp files from Swift Online Archive
+# A collection of functions for the Swift mission.
 ################################################################################
 
 import pandas as pd
 from astropy.table import Table, vstack
 
-def import_swift_archive(filepath) -> pd.DataFrame:
+def lc_swift_online_archive(filepath) -> pd.DataFrame:
     """
-    Import a lightcurve from Swift-XRT.
+    Import a lightcurve from the Swift-XRT online archive page.
     
     This function takes the standard .qdp lightcurve data available on the
-    Swift online archive, and outputs the formatted table ready for LAFF.
-    XRT lightcurves can sometimes contian upper limits, this funciton will
-    ignore this data.
+    Swift online archive GRB pages, and outputs the formatted table ready 
+    for LAFF. XRT lightcurves can sometimes contian upper limits, this 
+    function will ignore this data.
     
     [Parameters]
         filepath (str):
@@ -29,17 +25,24 @@ def import_swift_archive(filepath) -> pd.DataFrame:
             Formatted data table object.
     """
 
-    print('import_swift_xrt')
-
     qdptable = []
     i = 0
 
+    # Import tables from qdp.
     while i < 10:
         try:
             import_table = Table.read(filepath, format='ascii.qdp', table_id=i)
             if import_table.meta['comments'] in (['WTSLEW'], ['WT'], ['PC_incbad']):
                 qdptable.append(import_table)
             i += 1
-        except:
-            if i > 0: break # No more tables.
-            i += 1
+        except FileNotFoundError:
+            raise FileNotFoundError(f"No file found at '{filepath}'.")
+        except IndexError:
+            break
+
+    # Prepare data to pandas frame.
+    data = vstack(qdptable).to_pandas()
+    data = data.sort_values(by=['col1'])
+    data = data.reset_index(drop=True)
+
+    return data
