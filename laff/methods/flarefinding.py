@@ -44,3 +44,9 @@ def _find_maxima(data, start_idx):
     maxima = data[data.flux == max(points.flux)].index.values[0]
 
     return maxima
+
+def _find_decay(data, peak_idx, list_of_starts):
+
+    # decay finding algorithm.
+
+    return flare_end
