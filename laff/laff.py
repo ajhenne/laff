@@ -10,6 +10,10 @@ def findFlares(data):
         data
             A pandas table or list of lists containing the light curve data.
             Assumed to be time, time_err, flux, flux_err.
+
+    Output:
+        Flares
+            A nested list of flare (start, stop, end indices).
     """
 
     from .methods import (
@@ -17,13 +21,21 @@ def findFlares(data):
         _find_minima,
         _find_maxima,
         _find_decay,
+        _remove_Duplicates,
+        _check_FluxIncrease,
+        _check_AverageNoise,
     )
+
+    # Late cutoff check.
+    data = data[data.time < 2000] if RUNPARAMETERS['late_cutoff'] else data
 
     # Find deviations - 'possible flares'.
     deviations = []
-    for index in data.index[:-2]:
-        if _find_deviation(data, index, RUNPARAMETERS['rise_par']) == True:
+    for index in data.index[:-10]:
+        if _find_deviation(data, index) == True:
             deviations.append(index)
+    
+    temp_dev = deviations
 
     # Refine deviations by looking for local minima - flare starts.
     for index, start in enumerate(deviations):
@@ -35,27 +47,32 @@ def findFlares(data):
     for index, start in enumerate(flare_starts):
         flare_peaks[index] = _find_maxima(data, start)
 
-    # Implement a check here to ensure two starts don't share the same peak?
+    # Check there's no duplicates in lists.
+    flare_peaks, flare_starts = _remove_Duplicates(flare_peaks, flare_starts)
 
     # For each flare peak, find the flare end.
     flare_ends = [None] * len(flare_peaks)
     for index, peak in enumerate(flare_peaks):
-        flare_ends[index] = _find_decay(data, peak, flare_starts) # decay finder function needs completing
+        flare_ends[index] = _find_decay(data, peak, flare_starts, RUNPARAMETERS['decay_par']) # decay finder function needs completing
 
     Flares = []
     for i_start, i_peak, i_end in zip(flare_starts, flare_peaks, flare_ends):
-        Flares.append([i_start, i_peak, i_end])
+
+        check1 = _check_FluxIncrease(data, i_start, i_peak)
+        check2 = _check_AverageNoise(data, i_start, i_peak, i_end)
+
+        if check1 and check2:
+            Flares.append([i_start, i_peak, i_end])
     
-    # Return an organised list, or just return 3 lists of start/peak/ends?
-    return Flares
+    return Flares, temp_dev
 
 def fitContinuum(data, Flares):
 
-    return ContinuumModel
+    return #ContinuumModel
 
 def fitFlares(data, Flares, ContinuumModel):
 
-    return FlareModel
+    return #FlareModel
 
 def fitLightCurve(data):
 

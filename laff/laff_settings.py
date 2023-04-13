@@ -20,7 +20,8 @@ def set_par(par, val):
     RUNPARAMETERS[par] = val
 
 RUNPARAMETERS = {
-    'rise_par': 3,
+    'rise_par': 2,
     'decay_par': 3,
     'flare_model': 'fred',
+    'late_cutoff': True,
 }
