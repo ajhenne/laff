@@ -46,4 +46,6 @@ def lc_swift_online_archive(filepath) -> pd.DataFrame:
     data = data.reset_index(drop=True)
     data.columns = ['time', 'time_perr', 'time_nerr', 'flux', 'flux_perr', 'flux_nerr']
 
+    data['flare'] = False
+
     return data
