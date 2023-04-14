@@ -8,3 +8,7 @@ from .flarefinding import (
     _check_AverageNoise,
     _check_AverageGradient,
 )
+
+from .fitter_continuum import (
+    testfunction,
+)
