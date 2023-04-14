@@ -9,6 +9,6 @@ from .flarefinding import (
     _check_AverageGradient,
 )
 
-from .fitter_continuum import (
-    testfunction,
+from .bknpower_fit import (
+    _continuum_fitter,
 )

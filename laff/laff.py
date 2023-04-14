@@ -80,10 +80,18 @@ def findFlares(data):
 
 def fitContinuum(data, Flares):
 
-    data = data[data.flare == False]
+    from .methods import (
+        _continuum_fitter,
+    )
+
+    _continuum_fitter(data)
 
 
-    return data
+
+
+
+
+    return 
 
 def fitFlares(data, Flares, ContinuumModel):
 

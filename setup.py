@@ -12,7 +12,7 @@ with open("README.md", "rb") as f:
 
 # requirements = ["astropy>=5.1","pandas>=1.4.3","matplotlib>=3.5.2", "scipy>=1.8.0","numpy>=1.23", \
 #     "argparse>=1.4", "lmfit>=1.0.3"]
-requirements = ["pandas>=1.4.0", "astropy>=5.1", "numpy>=1.23", "matplotlib>3.5.2"]
+requirements = ["pandas>=1.4.0", "astropy>=5.1", "numpy>=1.23", "matplotlib>3.5.2", "scipy>=1.8.0"]
 
 setup(
     name='laff',
