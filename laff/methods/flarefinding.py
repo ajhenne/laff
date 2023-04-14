@@ -12,7 +12,6 @@ def _find_deviation(data, index):
         averageAfter = np.average(flux[index+1:index+6])
 
         pointAndError = flux[index] + data.iloc[index].flux_perr
-        print(averageBefore, averageAfter, pointAndError)
 
         if pointAndError < averageBefore and pointAndError < averageAfter:
             return False
@@ -52,21 +51,44 @@ def _find_maxima(data, start_idx):
 
     return maxima
 
-def _remove_Duplicates(peaklist, startlist):
+def _remove_Duplicates(data, startlist, peaklist):
 
     unique_peaks = set()
-    duplicate_indices = []
+    duplicate_peaks = []
+    duplicate_index = []
 
-    for i, peak in enumerate(peaklist):
+    indicesToRemove = []
+
+    for idx, peak in enumerate(peaklist):
         if peak in unique_peaks:
-            duplicate_indices.append(i)
+            duplicate_peaks.append(peak)
+            duplicate_index.append(idx)
         else:
             unique_peaks.add(peak)
 
-    for index in duplicate_indices:
-        del startlist[index]
+    unique_peaks = sorted(unique_peaks)
+    duplicate_peaks = sorted(duplicate_peaks)
+    duplicate_index = sorted(duplicate_index)
 
-    return sorted(unique_peaks), startlist
+    for data_index, peaklist_index in zip(duplicate_peaks, duplicate_index):
+        pointsToCompare = [i for i, x in enumerate(peaklist) if x == data_index]
+
+        # points is a pair of indices in peaklist
+        # each peaklist has a corresponding startlist
+        # so for point a and point b, find the flux in startlist at point a and b
+        # compare these two
+        # whichever is the lowest flux is more likely the start
+        # so we keep this index and discord the other index
+
+        comparison = np.argmin([data.iloc[startlist[x]].flux for x in pointsToCompare])
+
+        del pointsToCompare[comparison]
+        indicesToRemove.append(*pointsToCompare)
+    
+    new_startlist = [startlist[i] for i in range(len(startlist)) if i not in indicesToRemove]
+    new_peaklist = [peaklist[i] for i in range(len(peaklist)) if i not in indicesToRemove]
+
+    return new_startlist, new_peaklist
 
 def _find_decay(data, peak_idx, list_of_starts, DECAYPAR):
 
@@ -92,15 +114,15 @@ def _find_decay(data, peak_idx, list_of_starts, DECAYPAR):
 
         current_idx += 1
 
-        def _calc_grad(nextpoint, point):
+        def __calc_grad(nextpoint, point):
             deltaFlux = data.iloc[nextpoint].flux - data.iloc[point].flux
             deltaTime = data.iloc[nextpoint].time - data.iloc[point].time
             return deltaFlux/deltaTime
 
-        grad_NextAlong = _calc_grad(current_idx+1, current_idx)
-        grad_PrevAlong = _calc_grad(current_idx, current_idx-1)
-        grad_PeakToNext = _calc_grad(current_idx, peak_idx)
-        grad_PeakToPrev = _calc_grad(current_idx-1, peak_idx)
+        grad_NextAlong = __calc_grad(current_idx+1, current_idx)
+        grad_PrevAlong = __calc_grad(current_idx, current_idx-1)
+        grad_PeakToNext = __calc_grad(current_idx, peak_idx)
+        grad_PeakToPrev = __calc_grad(current_idx-1, peak_idx)
 
         cond1 = grad_NextAlong > grad_PeakToNext
         cond2 = grad_NextAlong > grad_PrevAlong
@@ -123,4 +145,24 @@ def _check_AverageNoise(data, startidx, peakidx, endidx):
     average_noise = np.average(data.iloc[startidx:endidx].flux_perr) + abs(np.average(data.iloc[startidx:endidx].flux_nerr))
     flux_increase = min(data.iloc[peakidx].flux - data.iloc[startidx].flux, data.iloc[peakidx].flux - data.iloc[endidx].flux)
     check = flux_increase > average_noise * 1.5
+    return check
+
+def _check_AverageGradient(data, startidx, peakidx, endidx):
+
+    check = False
+
+    def __calc_grad(nextpoint, point):
+        deltaFlux = data.iloc[nextpoint].flux - data.iloc[point].flux
+        deltaTime = data.iloc[nextpoint].time - data.iloc[point].time
+        return deltaFlux/deltaTime
+
+    rise_gradient = [__calc_grad(idx+1, idx) for idx in range(startidx, peakidx)]
+    decay_gradient = [__calc_grad(idx+1, idx) for idx in range(peakidx, endidx)]
+
+    if sum([(gradient > 0) for gradient in rise_gradient])/len(rise_gradient) > 0.75:
+        check = True
+
+    if sum([(gradient < 0) for gradient in decay_gradient])/len(decay_gradient) > 0.75:
+        check = True
+
     return check

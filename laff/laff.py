@@ -24,6 +24,7 @@ def findFlares(data):
         _remove_Duplicates,
         _check_FluxIncrease,
         _check_AverageNoise,
+        _check_AverageGradient
     )
 
     # Late cutoff check.
@@ -34,21 +35,19 @@ def findFlares(data):
     for index in data.index[:-10]:
         if _find_deviation(data, index) == True:
             deviations.append(index)
-    
-    temp_dev = deviations
 
     # Refine deviations by looking for local minima - flare starts.
-    for index, start in enumerate(deviations):
-        deviations[index] = _find_minima(data, start)
-    flare_starts = sorted(set(deviations))
+    flare_starts = deviations
+    for index, start in enumerate(flare_starts):
+        flare_starts[index] = _find_minima(data, start)
+    flare_starts = sorted(set(flare_starts))
 
     # For each flare start, find a flare peak.
     flare_peaks = [None] * len(flare_starts)
     for index, start in enumerate(flare_starts):
         flare_peaks[index] = _find_maxima(data, start)
 
-    # Check there's no duplicates in lists.
-    flare_peaks, flare_starts = _remove_Duplicates(flare_peaks, flare_starts)
+    flare_starts, flare_peaks = _remove_Duplicates(data, flare_starts, flare_peaks)
 
     # For each flare peak, find the flare end.
     flare_ends = [None] * len(flare_peaks)
@@ -60,11 +59,12 @@ def findFlares(data):
 
         check1 = _check_FluxIncrease(data, i_start, i_peak)
         check2 = _check_AverageNoise(data, i_start, i_peak, i_end)
+        check3 = _check_AverageGradient(data, i_start, i_peak, i_end)
 
-        if check1 and check2:
+        if check1 and check2 and check3:
             Flares.append([i_start, i_peak, i_end])
     
-    return Flares, temp_dev
+    return Flares, deviations
 
 def fitContinuum(data, Flares):
 
