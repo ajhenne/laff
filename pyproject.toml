@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "laff"
+version = "0.6.1"
+description = "GRB lightcurve flare and continuum fitter."
+authors = ["Adam Hennessy <ah724@leicester.ac.uk>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.8,<3.12"
+numpy = "^1.24.3"
+matplotlib = "^3.7.1"
+scipy = "^1.10.1"
+pandas = "^2.0.1"
+astropy = "^5.2.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
