@@ -65,3 +65,21 @@ def findFlares(data):
             flare_end.append(end)
 
     return flare_start, flare_peak, flare_end
+
+def fitContinuum(data, flare_indices):
+
+    def _fitModel(data, model, par):
+
+        return
+
+    data_continuum = data
+
+    # Remove flare data.
+    flare_indices = sorted(flare_indices, key=lambda x: x[1], reverse=True)
+    for start, end in flare_indices:
+        del data_continuum[start:end]
+    
+    # Guess initial parameters.
+
+    return
+
