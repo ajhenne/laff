@@ -1,11 +1,30 @@
 import numpy as np
 
+def _find_deviations2(data):
+
+    deviations = []
+    counter = 0
+
+    for i in data.index[:-1]:
+
+        if data.iloc[i+1].flux > data.iloc[i].flux:
+            counter += 1
+        else:
+            counter = 0
+
+        if counter == 2:
+            check = data.iloc[i+1].flux + (data.iloc[i+1].flux_perr * 2) > data.iloc[i-1].flux
+            if check:
+                deviations.append(i-1)
+            counter = 0
+
+    return sorted(set(deviations))
+
 def _find_deviations(data):
 
-    data = np.array(data.flux[:-10])
     deviations = []
 
-    for index in data.index[:10]:
+    for index in data.index[:-10]:
 
         flux = np.array(data.flux)
 
@@ -25,7 +44,7 @@ def _find_deviations(data):
         pointAndError = flux[index] + data.iloc[index].flux_perr
 
         # Check it satisfies average.
-        if pointAndError < averageBefore and pointAndError < averageAfter:
+        if not pointAndError > averageBefore:
             continue
 
         deviations.append(index)
@@ -94,7 +113,6 @@ def _remove_Duplicates(data, startlist, peaklist):
 
     for data_index, peaklist_index in zip(duplicate_peaks, duplicate_index):
         pointsToCompare = [i for i, x in enumerate(peaklist) if x == data_index]
-
         # points is a pair of indices in peaklist
         # each peaklist has a corresponding startlist
         # so for point a and point b, find the flux in startlist at point a and b
@@ -105,7 +123,9 @@ def _remove_Duplicates(data, startlist, peaklist):
         comparison = np.argmin([data.iloc[startlist[x]].flux for x in pointsToCompare])
 
         del pointsToCompare[comparison]
-        indicesToRemove.append(*pointsToCompare)
+
+        for point in pointsToCompare:
+            indicesToRemove.append(point)
     
     new_startlist = [startlist[i] for i in range(len(startlist)) if i not in indicesToRemove]
     new_peaklist = [peaklist[i] for i in range(len(peaklist)) if i not in indicesToRemove]
@@ -134,23 +154,19 @@ def _find_end(data, starts, peaks, DECAYPAR):
                 current_index += 1
                 continue
             # Check if we reach end of data.
-            if current_index + 1 == data.idxmax('index').time:
+            if any([current_index + i for i in range(2)] == data.idxmax('index').time):
                 break
             # Check if we reach next start.
             if current_index + 1 in starts:
-                break
+                current_index += 1
+                continue
 
             current_index += 1
 
-            def __calc_grad(nextpoint, point):
-                deltaFlux = data.iloc[nextpoint].flux - data.iloc[point].flux
-                deltaTime = data.iloc[nextpoint].time - data.iloc[point].time
-                return deltaFlux/deltaTime
-
-            grad_NextAlong = __calc_grad(current_index+1, current_index)
-            grad_PrevAlong = __calc_grad(current_index, current_index-1)
-            grad_PeakToNext = __calc_grad(current_index, peak_index)
-            grad_PeakToPrev = __calc_grad(current_index-1, peak_index)
+            grad_NextAlong = _calc_grad(data, current_index, current_index+1)
+            grad_PrevAlong = _calc_grad(data, current_index-1, current_index)
+            grad_PeakToNext = _calc_grad(data, peak_index, current_index)
+            grad_PeakToPrev = _calc_grad(data, peak_index, current_index-1)
 
             cond1 = grad_NextAlong > grad_PeakToNext
             cond2 = grad_NextAlong > grad_PrevAlong
@@ -166,31 +182,45 @@ def _find_end(data, starts, peaks, DECAYPAR):
     return sorted(ends)
 
 def _check_FluxIncrease(data, startidx, peakidx):
+    """Check the flare increase is greater than x2 the start error."""
     check = data.iloc[peakidx].flux > (data.iloc[startidx].flux + (2 * data.iloc[startidx].flux_perr))
     return check
 
 def _check_AverageNoise(data, startidx, peakidx, endidx):
-    average_noise = np.average(data.iloc[startidx:endidx].flux_perr) + abs(np.average(data.iloc[startidx:endidx].flux_nerr))
+    """Check if flare is greater than x2 the average noise across the flare."""
+    average_noise = abs(np.average(data.iloc[startidx:endidx].flux_perr)) + abs(np.average(data.iloc[startidx:endidx].flux_nerr))
     flux_increase = min(data.iloc[peakidx].flux - data.iloc[startidx].flux, data.iloc[peakidx].flux - data.iloc[endidx].flux)
-    check = flux_increase > average_noise * 1.5
+    check = flux_increase > average_noise * 2
     return check
 
-def _check_AverageGradient(data, startidx, peakidx, endidx):
+def _check_PulseShape(data, startidx, peakidx, endidx):
 
-    check = False
+    rise_phase = _calc_grad(data, startidx, peakidx, indexIsRange=True)
+    rise_condition = sum(x > 0 for x in rise_phase) / len(rise_phase)
 
-    def __calc_grad(nextpoint, point):
-        deltaFlux = data.iloc[nextpoint].flux - data.iloc[point].flux
-        deltaTime = data.iloc[nextpoint].time - data.iloc[point].time
+    decay_phase = _calc_grad(data, peakidx, endidx, indexIsRange=True)
+    decay_condition = sum(x < 0 for x in decay_phase) / len(decay_phase)
+
+    check = rise_condition > 0.6 and decay_condition > 0.6
+    return check
+
+def _calc_grad(data, index1, index2, indexIsRange=False):
+
+    if indexIsRange == False:
+        deltaFlux = data.iloc[index2].flux - data.iloc[index1].flux
+        deltaTime = data.iloc[index2].time - data.iloc[index1].time
         return deltaFlux/deltaTime
 
-    rise_gradient = [__calc_grad(idx+1, idx) for idx in range(startidx, peakidx)]
-    decay_gradient = [__calc_grad(idx+1, idx) for idx in range(peakidx, endidx)]
+    if indexIsRange == True:
 
-    if sum([(gradient > 0) for gradient in rise_gradient])/len(rise_gradient) > 0.75:
-        check = True
+        indices = range(index1, index2)
+        deltaFlux = []
+        deltaTime = []
+        for i in indices:
+            deltaFlux.append(data.iloc[i+1].flux - data.iloc[i].flux)
+            deltaTime.append(data.iloc[i+1].time - data.iloc[i].time)
 
-    if sum([(gradient < 0) for gradient in decay_gradient])/len(decay_gradient) > 0.75:
-        check = True
-
-    return check
+        return [flx / tim for flx, tim in zip(deltaFlux, deltaTime)]
+    
+    else:
+        raise ValueError("Parameter range should be boolean.")

@@ -1,2 +1,2 @@
-from .laff import findFlares
-from .lcimport import lc_import
+from .laff import findFlares, fitContinuum, plotResults
+from .lightcurve_import import lcimport

@@ -1,7 +1,7 @@
 import pandas as pd
 from astropy.table import Table, vstack
 
-def lc_import(filepath, format="swift"):
+def lcimport(filepath, format="swift"):
     """
     Import a lightcurve to a format ready for LAFF.
     
@@ -19,11 +19,10 @@ def lc_import(filepath, format="swift"):
     """
 
     if format == "swift":
-        # data = _swift_online_archive(filepath)
-        data = 1
+        data = _swift_online_archive(filepath)
     
     else:
-        return "error"
+        raise ValueError("Invalid format parameter.")
         
     return data
 
@@ -32,11 +31,15 @@ def _swift_online_archive(data_filepath):
     qdptable = []
     i = 0
 
+    allowed_modes = ['WTSLEW', 'WT', 'PC_incbad',
+                    'batSNR5flux', 'xrtwtslewflux', 'xrtwtflux', 'xrtpcflux_incbad']
+    allowed_modes = [[item] for item in allowed_modes]
+
     # Import tables from qdp.
     while i < 10:
         try:
             import_table = Table.read(data_filepath, format='ascii.qdp', table_id=i)
-            if import_table.meta['comments'] in (['WTSLEW'], ['WT'], ['PC_incbad']):
+            if import_table.meta['comments'] in allowed_modes:
                 qdptable.append(import_table)
             i += 1
         except FileNotFoundError:
@@ -49,7 +52,5 @@ def _swift_online_archive(data_filepath):
     data = data.sort_values(by=['col1'])
     data = data.reset_index(drop=True)
     data.columns = ['time', 'time_perr', 'time_nerr', 'flux', 'flux_perr', 'flux_nerr']
-
-    data['flare'] = False
 
     return data
