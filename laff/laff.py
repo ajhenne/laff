@@ -16,6 +16,7 @@ from .flarefinding import (
     _check_PulseShape )
 
 from .modelling import (
+ broken_powerlaw,
  power_break_1,
  log_likelihood,
  log_posterior,
@@ -88,106 +89,129 @@ def findFlares(data):
 
 def fitContinuum(data, flare_indices):
 
-    print(flare_indices)
     # Remove flare data.
-    # flare_indices = sorted(flare_indices, key=lambda x: x[1], reverse=True)
-    # for start, end in zip(flare_indices[0], flare_indices[2]):
-    #     print(start, end)
-    #     del data[start:end]
-    
-    print('here1')
-    ndim = 4
-    nwalkers = 25
-    nsteps = 500
-    
-    # How to calculate these more effectively. Slopes just keep as constant?
-    slope1_guess = 1.0
-    slope2_guess = 2.0
-
-    SLOPE_RANGE = 3
-    # Break point use a spacing algorithm?
-    break_point_guess = 100
-
-    BREAKPOINT_RANGE = 200
-
-    normal_guess = 1e-7
+    for start, end in zip(reversed(flare_indices[0]), reversed(flare_indices[2])):
+        data = data.drop(index=range(start, end))
 
 
-    p0 = np.zeros((nwalkers, ndim))
-    p0[:, 0] = slope1_guess + SLOPE_RANGE * np.random.randn(nwalkers)
-    p0[:, 1] = slope2_guess + SLOPE_RANGE * np.random.randn(nwalkers)
-    p0[:, 2] = break_point_guess + BREAKPOINT_RANGE * np.random.randn(nwalkers)
-    p0[:, 3] = normal_guess + (normal_guess*10) * np.random.randn(nwalkers)
+    def fitPowerlaws(data, breaknum):
+        
+        ndim = 2 * breaknum + 2
+        nwalkers = 40
+        nsteps = 1000
+
+        # Initialise guesses.
+        guess_slopes = [1] * (breaknum+1)
+        std_slopes = [0.6] * (breaknum+1)
+
+        normal_guess = np.logspace(0, -9, base=10, num=nwalkers)
+
+        guess_breaks = np.logspace(
+                        np.log10(data['time'].iloc[0]) * 1.1, 
+                        np.log10(data['time'].iloc[-1]) * 0.9, breaknum)
+
+        std_breaks = [(x + x * np.random.randn(nwalkers)) for x in list(guess_breaks)]
+
+        p0 = np.zeros((nwalkers, ndim))
+        for i in range(0, breaknum+1): # First n+1 are slopes.
+            p0[:, i] = guess_slopes[i] + std_slopes[i] * np.random.randn(nwalkers)
+        for breaknum, i in enumerate(range(breaknum+1, ndim-1)): # n+2 to penultimate are breaks.
+            p0[:, i] = std_breaks[breaknum]
+            # p0[:, i] = np.exp(np.random.uniform(np.log(data['time'].iloc[0]), np.log(data['time'].iloc[-1]), nwalkers)) * 0.1
+        p0[:, -1] = normal_guess # Final point is normal.
+
+        sampler = emcee.EnsembleSampler(nwalkers, ndim, log_posterior, \
+            args=(data.time, data.flux, data.time_perr, data.flux_perr))    
+        sampler.run_mcmc(p0, nsteps)
+
+        burnin = 200
+
+        samples = sampler.chain[:, burnin:, :].reshape(-1, ndim)
+
+        fitted_par = list(map(lambda v: np.median(v), samples.T))
+        fitted_err = list(map(lambda v: np.std(v), samples.T))
+
+        return [fitted_par, fitted_err]
+
+    # for n in range(1, 6):
+        # print(n, fitPowerlaws(data, n))
+
+    number = 3
+
+    fit = fitPowerlaws(data, number)
+
+    return fit[0], fit[1]
+
+        # append each powerlaw fit to a list
+
+    # Determine the best model.
+    # def functionDetermineBestModel():
+
+    # Do a more precise fit.
+    # def functionFitFinalContinuum():
+
+    ####
 
 
-    print('here2')
+    # fig = corner.corner(samples, labels=["slope1", "slope2", "break_point", "normal"])
+    # plt.show()
 
-    x = data.time
-    y = data.flux
-    x_err = data.time_perr
-    y_err = data.flux_perr
+    # Perform all fits.
+    # Evaluate each one.
 
-    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_posterior, args=(x, y, x_err, y_err))
-    sampler.run_mcmc(p0, nsteps)
-    print('here3')
+    # Run the best fit for a bit longer.
 
-    burnin = 100
+    # Return model and parameters.
 
-    samples = sampler.chain[:, burnin:, :].reshape(-1, ndim)
+    # return power_break_1, fitted_par, fitted_err
 
-    slope1_est, slope2_est, break_point_est, normal_est = map(lambda v: np.median(v), samples.T)
-    slope1_err, slope2_err, break_point_err, normal_err = map(lambda v: np.std(v), samples.T)
+def plotGRB(data, flares=None, continuum=None):
 
-    print(slope1_est, slope1_err)
-    print(slope2_est, slope2_err)
-    print(break_point_est, break_point_err)
-    print(normal_est, normal_err)
-
-    fig = corner.corner(samples, labels=["slope1", "slope2", "break_point", "normal"])
-    plt.show()
-
-    fitted_model_y = power_break_1(data.time, slope1_est, slope2_est, break_point_est, normal_est)
-
-    plt.scatter(data.time, data.flux)
-    plt.plot(data.time, fitted_model_y)
-    plt.loglog()
-
-    plt.show()
-    return
-
-def plotResults(data, flares):
-
+    data_continuum = data.copy()
     flare_data = []
-    cont_data = data.copy()
 
-    for start, peak, end in zip(*flares):
-        flare_data.append(data.iloc[start:end+1])   
-        cont_data = cont_data.drop(cont_data.index[start:end+1])
-    
-    try:
-        flare_data = pd.concat(flare_data) # concat rather than each flare in a separate list element??
-    except ValueError:
-        pass
-
-    plt.errorbar(cont_data.time, cont_data.flux,
-    xerr=[-cont_data.time_nerr, cont_data.time_perr], \
-    yerr=[-cont_data.flux_nerr, cont_data.flux_perr], \
-    marker='', linestyle='None', capsize=0)
-
-    try:
+    if flares:
         for start, peak, end in zip(*flares):
+            flare_data.append(data.iloc[start:end+1])
+            data_continuum = data_continuum.drop(data.index[start:end+1])
             plt.axvspan(data.iloc[start].time, data.iloc[end].time, color='r', alpha=0.25)
             plt.axvline(data.iloc[peak].time, color='g')
-    except AttributeError:
-        pass
-
-    try:
+        flare_data = pd.concat(flare_data)
         plt.errorbar(flare_data.time, flare_data.flux,
-        xerr=[-flare_data.time_nerr, flare_data.time_perr], \
-        yerr=[-flare_data.flux_nerr, flare_data.flux_perr], \
-        marker='', linestyle='None', capsize=0, color='r')
-    except AttributeError:
-        pass
+            xerr=[-flare_data.time_nerr, flare_data.time_perr], \
+            yerr=[-flare_data.flux_nerr, flare_data.flux_perr], \
+            marker='', linestyle='None', capsize=0, color='r')
+
+    # Plot lightcurve.
+    plt.errorbar(data_continuum.time, data_continuum.flux,
+    xerr=[-data_continuum.time_nerr, data_continuum.time_perr], \
+    yerr=[-data_continuum.flux_nerr, data_continuum.flux_perr], \
+    marker='', linestyle='None', capsize=0)
+
+    if continuum:
+        modelpar, modelerr = continuum
+
+        nparam = len(modelpar)
+        n = int((nparam-2)/2)
+
+        slopes = modelpar[:n+1]
+        breaks = modelpar[n+1:-1]
+        normal = modelpar[-1]
+
+        print('Slopes:', *slopes)
+        print('Breaks:', *breaks)
+        print('Normal:', normal)
+
+        max, min = np.log10(data['time'].iloc[0]), np.log10(data['time'].iloc[-1])
+        constant_range = np.logspace(min, max, num=2000)
+        fittedModel = broken_powerlaw(constant_range, modelpar)
+
+
+        plt.plot(constant_range, fittedModel)
+
+        for x_pos in breaks:
+            plt.axvline(x=x_pos, color='grey', linestyle='--', linewidth=0.75)
+
 
     plt.loglog()
     plt.show()
