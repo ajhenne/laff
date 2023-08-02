@@ -1,6 +1,6 @@
 import numpy as np
 
-def _find_deviations2(data):
+def _find_deviations(data):
 
     deviations = []
     counter = 0
@@ -20,36 +20,36 @@ def _find_deviations2(data):
 
     return sorted(set(deviations))
 
-def _find_deviations(data):
+# def _find_deviations(data):
 
-    deviations = []
+#     deviations = []
 
-    for index in data.index[:-10]:
+#     for index in data.index[:-10]:
 
-        flux = np.array(data.flux)
+#         flux = np.array(data.flux)
 
-        # Just return false if next point is lower.
-        if flux[index] < flux[index+1]:
-            continue
+#         # Just return false if next point is lower.
+#         if flux[index] < flux[index+1]:
+#             continue
 
-        # Check it increases 3 out of 5 times.
-        if not sum([(flux[index+i+1] > flux[index+i]) for i in range(0,5,1)]) >= 3:
-            continue
+#         # Check it increases 3 out of 5 times.
+#         if not sum([(flux[index+i+1] > flux[index+i]) for i in range(0,5,1)]) >= 3:
+#             continue
 
-        # Calculate average of values before and after point.
-        averageBefore = np.average(flux[index-5:index])
-        averageAfter = np.average(flux[index+1:index+6])
+#         # Calculate average of values before and after point.
+#         averageBefore = np.average(flux[index-5:index])
+#         averageAfter = np.average(flux[index+1:index+6])
 
-        # Get point plus error.
-        pointAndError = flux[index] + data.iloc[index].flux_perr
+#         # Get point plus error.
+#         pointAndError = flux[index] + data.iloc[index].flux_perr
 
-        # Check it satisfies average.
-        if not pointAndError > averageBefore:
-            continue
+#         # Check it satisfies average.
+#         if not pointAndError > averageBefore:
+#             continue
 
-        deviations.append(index)
+#         deviations.append(index)
 
-    return sorted(set(deviations))
+#     return sorted(set(deviations))
 
 def _find_minima(data, deviations):
 

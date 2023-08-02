@@ -4,24 +4,7 @@ import numpy as np
 import emcee
 import corner
 
-from .flarefinding import (
-    _find_deviations,
-    _find_deviations2,
-    _find_minima,
-    _find_maxima,
-    _find_end,
-    _remove_Duplicates,
-    _check_AverageNoise,
-    _check_FluxIncrease,
-    _check_PulseShape )
-
-from .modelling import (
- broken_powerlaw,
- power_break_1,
- log_likelihood,
- log_posterior,
- log_prior   
-)
+from .modelling import broken_powerlaw
 
 def findFlares(data):
     """
@@ -38,6 +21,16 @@ def findFlares(data):
         flares
             A nested list of flare start, stop, end indices.
     """
+
+    from .flarefinding import (
+        _find_deviations,
+        _find_minima,
+        _find_maxima,
+        _find_end,
+        _remove_Duplicates,
+        _check_AverageNoise,
+        _check_FluxIncrease,
+        _check_PulseShape )
 
     # Check data is correct input format.
     if not isinstance(data, pd.DataFrame):
@@ -60,7 +53,7 @@ def findFlares(data):
     data = data[data.time < 2000] if LATE_CUTOFF else data
 
     # Find deviations, or possible flares.
-    deviations = _find_deviations2(data)
+    deviations = _find_deviations(data)
 
     # Refine deviations by looking for local minima, or flare starts.
     starts = _find_minima(data, deviations)
@@ -85,85 +78,25 @@ def findFlares(data):
             flare_start.append(int(start))
             flare_peak.append(int(peak))
             flare_end.append(int(end))
-    return [flare_start, flare_peak, flare_end]
+    return [flare_start, flare_peak, flare_end] if len(flare_start) else None
 
 def fitContinuum(data, flare_indices):
 
+    from .modelling import find_intial_fit, fitMCMC
+
     # Remove flare data.
-    for start, end in zip(reversed(flare_indices[0]), reversed(flare_indices[2])):
-        data = data.drop(index=range(start, end))
+    if flare_indices:
+        for start, end in zip(reversed(flare_indices[0]), reversed(flare_indices[2])):
+            data = data.drop(index=range(start, end))
 
+    # Use AIC to find best number of powerlaw breaks.
+    initial_fit, initial_fit_err = find_intial_fit(data)
+    break_number = int((len(initial_fit-2)/2)-1)
 
-    def fitPowerlaws(data, breaknum):
-        
-        ndim = 2 * breaknum + 2
-        nwalkers = 40
-        nsteps = 1000
+    # Run MCMC to refine fit.
+    final_par, final_err = fitMCMC(data, break_number, initial_fit, initial_fit_err)
 
-        # Initialise guesses.
-        guess_slopes = [1] * (breaknum+1)
-        std_slopes = [0.6] * (breaknum+1)
-
-        normal_guess = np.logspace(0, -9, base=10, num=nwalkers)
-
-        guess_breaks = np.logspace(
-                        np.log10(data['time'].iloc[0]) * 1.1, 
-                        np.log10(data['time'].iloc[-1]) * 0.9, breaknum)
-
-        std_breaks = [(x + x * np.random.randn(nwalkers)) for x in list(guess_breaks)]
-
-        p0 = np.zeros((nwalkers, ndim))
-        for i in range(0, breaknum+1): # First n+1 are slopes.
-            p0[:, i] = guess_slopes[i] + std_slopes[i] * np.random.randn(nwalkers)
-        for breaknum, i in enumerate(range(breaknum+1, ndim-1)): # n+2 to penultimate are breaks.
-            p0[:, i] = std_breaks[breaknum]
-            # p0[:, i] = np.exp(np.random.uniform(np.log(data['time'].iloc[0]), np.log(data['time'].iloc[-1]), nwalkers)) * 0.1
-        p0[:, -1] = normal_guess # Final point is normal.
-
-        sampler = emcee.EnsembleSampler(nwalkers, ndim, log_posterior, \
-            args=(data.time, data.flux, data.time_perr, data.flux_perr))    
-        sampler.run_mcmc(p0, nsteps)
-
-        burnin = 200
-
-        samples = sampler.chain[:, burnin:, :].reshape(-1, ndim)
-
-        fitted_par = list(map(lambda v: np.median(v), samples.T))
-        fitted_err = list(map(lambda v: np.std(v), samples.T))
-
-        return [fitted_par, fitted_err]
-
-    # for n in range(1, 6):
-        # print(n, fitPowerlaws(data, n))
-
-    number = 3
-
-    fit = fitPowerlaws(data, number)
-
-    return fit[0], fit[1]
-
-        # append each powerlaw fit to a list
-
-    # Determine the best model.
-    # def functionDetermineBestModel():
-
-    # Do a more precise fit.
-    # def functionFitFinalContinuum():
-
-    ####
-
-
-    # fig = corner.corner(samples, labels=["slope1", "slope2", "break_point", "normal"])
-    # plt.show()
-
-    # Perform all fits.
-    # Evaluate each one.
-
-    # Run the best fit for a bit longer.
-
-    # Return model and parameters.
-
-    # return power_break_1, fitted_par, fitted_err
+    return final_par, final_err
 
 def plotGRB(data, flares=None, continuum=None):
 
@@ -197,13 +130,20 @@ def plotGRB(data, flares=None, continuum=None):
         slopes = modelpar[:n+1]
         breaks = modelpar[n+1:-1]
         normal = modelpar[-1]
+    
+        slopes_Err = modelerr[:n+1]
+        breaks_Err = modelerr[n+1:-1]
+        normal_Err = modelerr[-1]
 
-        print('Slopes:', *slopes)
-        print('Breaks:', *breaks)
-        print('Normal:', normal)
+        print('Slopes:', *["{:.2f}".format(number) for number in slopes])
+        print('Slopes Err:', *["{:.2f}".format(number) for number in slopes_Err])
+        print('Breaks:', *["{:.2f}".format(number) for number in breaks])
+        print('Breaks Err:', *["{:.2f}".format(number) for number in breaks_Err])
+        print('Normal:', "{:.2e}".format(normal))
+        print('Normal Err:', "{:.2e}".format(normal_Err))
 
         max, min = np.log10(data['time'].iloc[0]), np.log10(data['time'].iloc[-1])
-        constant_range = np.logspace(min, max, num=2000)
+        constant_range = np.logspace(min, max, num=5000)
         fittedModel = broken_powerlaw(constant_range, modelpar)
 
 

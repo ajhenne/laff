@@ -1,6 +1,5 @@
 from .flarefinding import (
     _find_deviations,
-    _find_deviations2,
     _find_minima,
     _find_maxima,
     _find_end,

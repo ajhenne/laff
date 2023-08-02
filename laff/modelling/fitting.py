@@ -1,8 +1,12 @@
-import emcee
 import numpy as np
 
-def broken_powerlaw(x, params):
+## Initial scipy fit.
 
+#################################################################################
+### CONTINUUM MODEL
+#################################################################################
+
+def broken_powerlaw(x, params):
     x = np.array(x)
 
     nparam = len(params)
@@ -38,24 +42,115 @@ def broken_powerlaw(x, params):
 
     return model
 
-def power_break_1(x, index1, index2, break1, normal):
-    mask = x < break1
+def broken_powerlaw_wrapper(params, x):
+    return broken_powerlaw(x, params)
 
-    y = np.empty_like(x)
-    y[mask] = normal * (x[mask] ** (-index1))
-    y[~mask] = normal * (break1 ** (index2 - index1)) * (x[~mask] ** (-index2))
-    return y
+
+#################################################################################
+### SCIPY.ODR FITTING
+#################################################################################
+
+from scipy.odr import ODR, Model, RealData
+
+def find_intial_fit(data):
+    data_start, data_end = data['time'].iloc[0], data['time'].iloc[-1]
+    model_fits = []
+
+    for breaknum in range(0, 6, 1):
+
+        # Guess parameters.
+        slope_guesses = [1.0] * (breaknum+1)
+        break_guesses = list(np.array(np.logspace(np.log10(data_start) * 1.1, np.log10(data_end) * 0.9, num=breaknum)))
+        normal_guess  = [data['flux'].iloc[0] * data['time'].iloc[0]]
+        input_par = slope_guesses + break_guesses + normal_guess
+
+        # Perform fit.
+        fit_par, fit_err = odr_fitter(data, input_par)
+
+        # Evaluate fit.
+        model = broken_powerlaw(np.array(data.time), fit_par)
+        chisq = np.sum(((data.flux - model) ** 2)/(data.flux_perr**2))
+        k = len(fit_par)
+        AIC = 2 * k + len(data.flux) * np.log(chisq)
+
+        model_fits.append([fit_par, AIC, fit_err])
+
+    # Obtain best fitted mdel.
+    best_fit, best_err = min(model_fits, key=lambda x: x[1])[0], min(model_fits, key=lambda x: x[1])[2]
+    return best_fit, best_err
+
+
+def odr_fitter(data, inputpar):
+    data = RealData(data.time, data.flux, data.time_perr, data.flux_perr)
+    model = Model(broken_powerlaw_wrapper)
+
+    odr = ODR(data, model, beta0=inputpar)
+
+    odr.set_job(fit_type = 0)
+    output = odr.run()
+
+    if output.info != 1:
+        i = 1
+        while output.info != 1 and i < 100:
+            output = odr.restart()
+            i += 1
+            
+    return output.beta, output.sd_beta
+        
+
+#################################################################################
+### MCMC FITTING
+#################################################################################
+
+import emcee
+
+def fitMCMC(data, breaknum, init_param, init_err):
+
+    ndim = 2 * breaknum + 2
+    nwalkers = 25
+    nsteps = 400
+
+    nparam = len(init_param)
+    n = int((nparam-2)/2)
+
+    # Parameter priors.
+    p0 = np.zeros((nwalkers, ndim))
+
+    guess_slopes = init_param[:n+1]
+    std_slopes = init_err[:n+1] / 3.4
+    for i in range(0, breaknum+1):
+        p0[:, i] = guess_slopes[i] + std_slopes[i] * np.random.randn(nwalkers)
+
+    guess_breaks = init_param[n+1:-1]
+    std_breaks = init_err[n+1:-1] / 3.4
+    for breaknum, i in enumerate(range(breaknum+1, ndim-1)):
+        p0[:, i] = guess_breaks[breaknum] + std_breaks[breaknum] * np.random.randn(nwalkers)
+
+    guess_norm = init_param[-1]
+    std_norm = init_err[-1] / 3.4
+    p0[:, -1] = guess_norm + std_norm * np.random.randn(nwalkers)
+
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_posterior, \
+        args=(data.time, data.flux, data.time_perr, data.flux_perr))
+    sampler.run_mcmc(p0, nsteps)
+
+    burnin = 50
+
+    samples = sampler.chain[:, burnin:, :].reshape(-1, ndim)
+
+    fitter_par = list(map(lambda v: np.median(v), samples.T))
+    fitted_err = list(map(lambda v: np.std(v), samples.T))
+
+    return fitter_par, fitted_err
 
 def log_likelihood(params, x, y, x_err, y_err):
     model = broken_powerlaw(x, params)
-    
     residual = y - model
     chi_squared = np.sum((residual / y_err) ** 2)
     log_likelihood = -0.5 * (len(x) * np.log(2*np.pi) + np.sum(np.log(y_err ** 2)) + chi_squared)
-
     return log_likelihood
 
-def log_prior(params):
+def log_prior(params, TIME_END):
 
     nparam = len(params)
     n = int((nparam-2)/2)
@@ -67,17 +162,19 @@ def log_prior(params):
     if not all(-1 < value < 2.5 for value in slopes):
         return -np.inf
 
-    if any(value < 0 for value in breaks):
+    elif any(value < 0 for value in breaks):
         return -np.inf
-    #  any breakpoint > data.time max ?
 
-    if (normal < 0):
+    elif any(value > TIME_END for value in breaks):
+        return -np.inf
+
+    elif (normal < 0):
         return -np.inf
 
     return 0.0
 
 def log_posterior(params, x, y, x_err, y_err):
-    lp = log_prior(params)
+    lp = log_prior(params, x.iloc[-1])
     ll = log_likelihood(params, x, y, x_err, y_err)
     if not np.isfinite(lp):
         return -np.inf
