@@ -1,8 +1,22 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+import logging
+import warnings
 import emcee
 import corner
+
+
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+### Logging ###
+logger = logging.getLogger('laff')
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+###
 
 from .modelling import broken_powerlaw
 
@@ -21,6 +35,7 @@ def findFlares(data):
         flares
             A nested list of flare start, stop, end indices.
     """
+    logger.debug("Starting findFlares")
 
     from .flarefinding import (
         _find_deviations,
@@ -78,27 +93,36 @@ def findFlares(data):
             flare_start.append(int(start))
             flare_peak.append(int(peak))
             flare_end.append(int(end))
-    return [flare_start, flare_peak, flare_end] if len(flare_start) else None
+
+    logger.info(f"Found {len(flare_start)} flares.")
+    return [flare_start, flare_peak, flare_end] if len(flare_start) else False
 
 def fitContinuum(data, flare_indices):
+    logger.debug(f"Starting fitContinuum")
 
-    from .modelling import find_intial_fit, fitMCMC
+    from .modelling import find_intial_fit, fit_continuum_mcmc
 
     # Remove flare data.
     if flare_indices:
         for start, end in zip(reversed(flare_indices[0]), reversed(flare_indices[2])):
             data = data.drop(index=range(start, end))
 
-    # Use AIC to find best number of powerlaw breaks.
+    # Use ODR & AIC to find best number of powerlaw breaks.
     initial_fit, initial_fit_err = find_intial_fit(data)
     break_number = int((len(initial_fit-2)/2)-1)
 
     # Run MCMC to refine fit.
-    final_par, final_err = fitMCMC(data, break_number, initial_fit, initial_fit_err)
+    final_par, final_err = fit_continuum_mcmc(data, break_number, initial_fit, initial_fit_err)
 
-    return final_par, final_err
+    from .utility import calculate_fit_statistics
+    final_fit_statistics = calculate_fit_statistics(data, broken_powerlaw, final_par)
 
-def plotGRB(data, flares=None, continuum=None):
+    return {'parameters': final_par, 'errors': final_err, **final_fit_statistics}
+
+def plotGRB(data, flares=False, continuum=False):
+    logger.debug(f"Starting plotGRB")
+    logger.debug(f"Input flares: {flares}")
+    logger.debug(f"Input continuum: {continuum}")
 
     data_continuum = data.copy()
     flare_data = []
@@ -108,7 +132,7 @@ def plotGRB(data, flares=None, continuum=None):
             flare_data.append(data.iloc[start:end+1])
             data_continuum = data_continuum.drop(data.index[start:end+1])
             plt.axvspan(data.iloc[start].time, data.iloc[end].time, color='r', alpha=0.25)
-            plt.axvline(data.iloc[peak].time, color='g')
+            # plt.axvline(data.iloc[peak].time, color='g')
         flare_data = pd.concat(flare_data)
         plt.errorbar(flare_data.time, flare_data.flux,
             xerr=[-flare_data.time_nerr, flare_data.time_perr], \
@@ -122,25 +146,26 @@ def plotGRB(data, flares=None, continuum=None):
     marker='', linestyle='None', capsize=0)
 
     if continuum:
-        modelpar, modelerr = continuum
+        modelpar, modelerr = continuum['parameters'], continuum['errors']
 
         nparam = len(modelpar)
         n = int((nparam-2)/2)
 
         slopes = modelpar[:n+1]
-        breaks = modelpar[n+1:-1]
-        normal = modelpar[-1]
-    
         slopes_Err = modelerr[:n+1]
-        breaks_Err = modelerr[n+1:-1]
-        normal_Err = modelerr[-1]
+        slopes_info = [f"{slp:.2f} ({slp_err:.2f})" for slp, slp_err in zip(slopes, slopes_Err)]
 
-        print('Slopes:', *["{:.2f}".format(number) for number in slopes])
-        print('Slopes Err:', *["{:.2f}".format(number) for number in slopes_Err])
-        print('Breaks:', *["{:.2f}".format(number) for number in breaks])
-        print('Breaks Err:', *["{:.2f}".format(number) for number in breaks_Err])
-        print('Normal:', "{:.2e}".format(normal))
-        print('Normal Err:', "{:.2e}".format(normal_Err))
+        breaks = modelpar[n+1:-1]
+        breaks_Err = modelerr[n+1:-1]
+        breaks_info = [f"{brk:.3g} ({brk_err:.3g})" for brk, brk_err in zip(breaks, breaks_Err)]
+        
+        normal = modelpar[-1]
+        normal_Err = modelerr[-1]
+        normal_info = f"{normal:.2e} ({normal_Err:.2e})"
+
+        logger.info("Slopes: {}".format(', '.join(slopes_info)))
+        logger.info("Breaks: {}".format(', '.join(breaks_info)))
+        logger.info(f"Normal: {normal_info}")
 
         max, min = np.log10(data['time'].iloc[0]), np.log10(data['time'].iloc[-1])
         constant_range = np.logspace(min, max, num=5000)
@@ -155,5 +180,28 @@ def plotGRB(data, flares=None, continuum=None):
 
     plt.loglog()
     plt.show()
+
+
+    if flares and continuum:
+
+        #########################
+        #### Temporary block ####
+
+        flr_strt, flr_end = flares[0][0], flares[-1][2]
+
+        plt.scatter(data.time, data.flux - broken_powerlaw(data.time, modelpar))   
+        plt.axhline(y=0, color='grey', linewidth=1, linestyle='--')
+        plt.xlim(data.iloc[flr_strt].time * 0.9, data.iloc[flr_end].time * 1.1)
+        plt.semilogx()
+        # plt.show()
+
+        # Take data - model
+        # For each flare, I can estimate rthe starting parameters.
+        # Centre = peak of flares.
+        # Rise/decay indices as a simple gradient calc?
+
+
+        #### Temporary block ####
+        #########################
 
     return

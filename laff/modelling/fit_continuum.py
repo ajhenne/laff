@@ -1,4 +1,10 @@
 import numpy as np
+import matplotlib.pyplot as plt
+import logging
+
+from ..utility import calculate_fit_statistics
+
+logger = logging.getLogger('laff')
 
 ## Initial scipy fit.
 
@@ -28,8 +34,7 @@ def broken_powerlaw(x, params):
     if n >= 0:
         model = normal * (x**(-slopes[0]))
     if n >= 1:
-        mask_0 = np.array(mask[0])
-        model[np.where(mask_0)] = normal * (x[np.where(mask_0)]**(-slopes[1])) * (breaks[0]**(-slopes[0]+slopes[1]))
+        model[np.where(mask[0])] = normal * (x[np.where(mask[0])]**(-slopes[1])) * (breaks[0]**(-slopes[0]+slopes[1]))
     if n >= 2:
         mask[1] = np.array(mask[1])
         model[np.where(mask[1])] = normal * (x[np.where(mask[1])]**(-slopes[2])) * (breaks[0]**(-slopes[0]+slopes[1])) * (breaks[1]**(-slopes[1]+slopes[2]))
@@ -67,18 +72,32 @@ def find_intial_fit(data):
         # Perform fit.
         fit_par, fit_err = odr_fitter(data, input_par)
 
-        # Evaluate fit.
-        model = broken_powerlaw(np.array(data.time), fit_par)
-        chisq = np.sum(((data.flux - model) ** 2)/(data.flux_perr**2))
-        k = len(fit_par)
-        AIC = 2 * k + len(data.flux) * np.log(chisq)
+        # Ensure breaks are sorted.
+        n = int((len(fit_par)-2)/2)
+        fit_par[n+1:-1] = sorted(fit_par[n+1:-1])
 
-        model_fits.append([fit_par, AIC, fit_err])
+        # Evaluate fit.
+        fit_stats = calculate_fit_statistics(data, broken_powerlaw, fit_par)
+        deltaAIC = (2 * fit_stats['npar']) + (fit_stats['n'] * np.log(fit_stats['rchisq']))
+
+        model_fits.append([fit_par, deltaAIC, fit_err])
+
 
     # Obtain best fitted mdel.
-    best_fit, best_err = min(model_fits, key=lambda x: x[1])[0], min(model_fits, key=lambda x: x[1])[2]
-    return best_fit, best_err
+    best_fit, best_aic, best_err = min(model_fits, key=lambda x: x[1])
 
+    nparam = len(best_fit)
+    n = int((nparam-2)/2)
+    logger.info(f"Initial fit found {n} breaks.")
+
+    logger.debug("ODR initial fit parameters.")
+    logger.debug(f'Slopes: {list(best_fit[:n+1])}')
+    logger.debug(f'Breaks: {list(best_fit[n+1:-1])}')
+    logger.debug(f'Normal: {best_fit[-1]}')
+
+    ###
+
+    return best_fit, best_err
 
 def odr_fitter(data, inputpar):
     data = RealData(data.time, data.flux, data.time_perr, data.flux_perr)
@@ -104,11 +123,11 @@ def odr_fitter(data, inputpar):
 
 import emcee
 
-def fitMCMC(data, breaknum, init_param, init_err):
+def fit_continuum_mcmc(data, breaknum, init_param, init_err):
 
     ndim = 2 * breaknum + 2
     nwalkers = 25
-    nsteps = 400
+    nsteps = 500
 
     nparam = len(init_param)
     n = int((nparam-2)/2)
@@ -116,38 +135,47 @@ def fitMCMC(data, breaknum, init_param, init_err):
     # Parameter priors.
     p0 = np.zeros((nwalkers, ndim))
 
+    # Slopes.
     guess_slopes = init_param[:n+1]
     std_slopes = init_err[:n+1] / 3.4
     for i in range(0, breaknum+1):
         p0[:, i] = guess_slopes[i] + std_slopes[i] * np.random.randn(nwalkers)
 
+    # Breaks.
     guess_breaks = init_param[n+1:-1]
     std_breaks = init_err[n+1:-1] / 3.4
     for breaknum, i in enumerate(range(breaknum+1, ndim-1)):
         p0[:, i] = guess_breaks[breaknum] + std_breaks[breaknum] * np.random.randn(nwalkers)
 
+    # Normalisation.
     guess_norm = init_param[-1]
-    std_norm = init_err[-1] / 3.4
+    std_norm = init_err[-1]
     p0[:, -1] = guess_norm + std_norm * np.random.randn(nwalkers)
+
+    logger.info("Running MCMC...")
 
     sampler = emcee.EnsembleSampler(nwalkers, ndim, log_posterior, \
         args=(data.time, data.flux, data.time_perr, data.flux_perr))
     sampler.run_mcmc(p0, nsteps)
 
-    burnin = 50
+    burnin = 100
 
     samples = sampler.chain[:, burnin:, :].reshape(-1, ndim)
 
     fitter_par = list(map(lambda v: np.median(v), samples.T))
     fitted_err = list(map(lambda v: np.std(v), samples.T))
 
+    logger.info("Fitting complete.")
+
     return fitter_par, fitted_err
 
 def log_likelihood(params, x, y, x_err, y_err):
     model = broken_powerlaw(x, params)
-    residual = y - model
-    chi_squared = np.sum((residual / y_err) ** 2)
-    log_likelihood = -0.5 * (len(x) * np.log(2*np.pi) + np.sum(np.log(y_err ** 2)) + chi_squared)
+    # residual = y - model
+    # chi_squared = np.sum((residual/ y_err) ** 2)
+    # log_likelihood = -0.5 * (len(x) * np.log(2*np.pi) + np.sum(np.log(y_err ** 2)) + chi_squared)
+    chisq = np.sum(( (y-model)**2) / ((y_err)**2)) 
+    log_likelihood = -0.5 * np.sum(chisq + np.log(2 * np.pi * y_err**2))
     return log_likelihood
 
 def log_prior(params, TIME_END):
@@ -159,16 +187,16 @@ def log_prior(params, TIME_END):
     breaks = params[n+1:-1]
     normal = params[-1]
 
-    if not all(-1 < value < 2.5 for value in slopes):
+    if not all(-2 < value < 4 for value in slopes):
         return -np.inf
 
-    elif any(value < 0 for value in breaks):
+    if any(value < 0 for value in breaks):
         return -np.inf
 
-    elif any(value > TIME_END for value in breaks):
+    if any(value > TIME_END for value in breaks):
         return -np.inf
 
-    elif (normal < 0):
+    if (normal < 0):
         return -np.inf
 
     return 0.0

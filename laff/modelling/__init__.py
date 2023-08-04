@@ -1,5 +1,5 @@
-from .fitting import (
+from .fit_continuum import (
  broken_powerlaw,
  find_intial_fit,
- fitMCMC 
+ fit_continuum_mcmc 
 )
