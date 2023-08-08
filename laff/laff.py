@@ -6,17 +6,23 @@ import warnings
 import emcee
 import corner
 
-
+# Ignore warnings.
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-### Logging ###
+#################################################################################
+### LOGGER
+#################################################################################
+
 logger = logging.getLogger('laff')
 logger.setLevel(logging.INFO)
 handler = logging.StreamHandler()
 formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 handler.setFormatter(formatter)
 logger.addHandler(handler)
-###
+
+#################################################################################
+### FIND FLARES
+#################################################################################
 
 from .modelling import broken_powerlaw
 
@@ -94,8 +100,12 @@ def findFlares(data):
             flare_peak.append(int(peak))
             flare_end.append(int(end))
 
-    logger.info(f"Found {len(flare_start)} flares.")
+    logger.info(f"Flare finder found {len(flare_start)} flares.")
     return [flare_start, flare_peak, flare_end] if len(flare_start) else False
+
+#################################################################################
+### CONTINUUM FITTING
+#################################################################################
 
 def fitContinuum(data, flare_indices):
     logger.debug(f"Starting fitContinuum")
@@ -117,22 +127,68 @@ def fitContinuum(data, flare_indices):
     from .utility import calculate_fit_statistics
     final_fit_statistics = calculate_fit_statistics(data, broken_powerlaw, final_par)
 
-    return {'parameters': final_par, 'errors': final_err, **final_fit_statistics}
+    return {'parameters': final_par, 'errors': final_err, 'fit_statistics': final_fit_statistics}
 
-def plotGRB(data, flares=False, continuum=False):
+#################################################################################
+### FIT FLARES
+#################################################################################
+
+def fitFlares(data, flares, continuum):
+
+    from .modelling import flare_fitter, fred_flare
+
+    fitted_model = broken_powerlaw(data.time, continuum['parameters'])
+    data_subtracted = data.copy()
+    data_subtracted['flux'] = data.flux - fitted_model
+
+    # Fit flares with ODR.
+    flare_fits, flare_errs = flare_fitter(data, data_subtracted, flares)
+
+    return {'parameters': flare_fits, 'errors': flare_errs}
+
+#################################################################################
+### FIT WHOLE GRB
+#################################################################################
+
+def fitGRB(data, flare_indices=None, continuum=None, flares=None):
+
+    logger.debug(f"Starting fitGRB")
+
+    if flare_indices is None:
+        logger.debug(f"Flares not provided - running findFlares function.")
+        flare_indices = findFlares(data)
+
+    if continuum is None:
+        logger.debug(f"Continuum not provided - running fitContinuum function.")
+        continuum = fitContinuum(data, flare_indices)
+
+    if flares is None:
+        logger.debug(f"Flare models not provided - running fitFlares function.")
+        flares = fitFlares(data, flare_indices, continuum)
+
+    return flare_indices, continuum, flares
+
+#################################################################################
+### PLOTTING
+#################################################################################
+
+def plotGRB(data, flare_indices=False, continuum=False, flares=False):
     logger.debug(f"Starting plotGRB")
-    logger.debug(f"Input flares: {flares}")
+    logger.debug(f"Input flares: {flare_indices}")
     logger.debug(f"Input continuum: {continuum}")
 
     data_continuum = data.copy()
     flare_data = []
 
-    if flares:
-        for start, peak, end in zip(*flares):
+    # For smooth plotting of fitted functions.
+    max, min = np.log10(data['time'].iloc[0]), np.log10(data['time'].iloc[-1])
+    constant_range = np.logspace(min, max, num=5000)
+
+    if flare_indices:
+        for start, peak, end in zip(*flare_indices):
             flare_data.append(data.iloc[start:end+1])
             data_continuum = data_continuum.drop(data.index[start:end+1])
-            plt.axvspan(data.iloc[start].time, data.iloc[end].time, color='r', alpha=0.25)
-            # plt.axvline(data.iloc[peak].time, color='g')
+            # plt.axvspan(data.iloc[start].time, data.iloc[end].time, color='r', alpha=0.25)
         flare_data = pd.concat(flare_data)
         plt.errorbar(flare_data.time, flare_data.flux,
             xerr=[-flare_data.time_nerr, flare_data.time_perr], \
@@ -146,62 +202,63 @@ def plotGRB(data, flares=False, continuum=False):
     marker='', linestyle='None', capsize=0)
 
     if continuum:
+        if not flare_indices:
+            raise ValueError("Cannot input a continuum without flare indices.")
+
         modelpar, modelerr = continuum['parameters'], continuum['errors']
 
         nparam = len(modelpar)
         n = int((nparam-2)/2)
 
+        # Print continuum fits.
         slopes = modelpar[:n+1]
         slopes_Err = modelerr[:n+1]
         slopes_info = [f"{slp:.2f} ({slp_err:.2f})" for slp, slp_err in zip(slopes, slopes_Err)]
-
         breaks = modelpar[n+1:-1]
         breaks_Err = modelerr[n+1:-1]
         breaks_info = [f"{brk:.3g} ({brk_err:.3g})" for brk, brk_err in zip(breaks, breaks_Err)]
-        
         normal = modelpar[-1]
         normal_Err = modelerr[-1]
         normal_info = f"{normal:.2e} ({normal_Err:.2e})"
 
+        logger.info("[ CONTINUUM PARAMETERS ]")
         logger.info("Slopes: {}".format(', '.join(slopes_info)))
         logger.info("Breaks: {}".format(', '.join(breaks_info)))
         logger.info(f"Normal: {normal_info}")
 
-        max, min = np.log10(data['time'].iloc[0]), np.log10(data['time'].iloc[-1])
-        constant_range = np.logspace(min, max, num=5000)
-        fittedModel = broken_powerlaw(constant_range, modelpar)
+        # Plot continuum model.
+        fittedContinuum = broken_powerlaw(constant_range, modelpar)
+        plt.plot(constant_range, fittedContinuum, color='c')
 
-
-        plt.plot(constant_range, fittedModel)
-
+        # Plot powerlaw breaks.
         for x_pos in breaks:
-            plt.axvline(x=x_pos, color='grey', linestyle='--', linewidth=0.75)
+            plt.axvline(x=x_pos, color='grey', linestyle='--', linewidth=0.5)
 
+    if flares:
+        if not flare_indices:
+            raise ValueError("Cannot input flares without flare_indices.")
+        if not continuum:
+            raise ValueError("Cannot input flares without continuum.")
+        
+        from .modelling import fred_flare
+
+        total_model = fittedContinuum
+
+        logger.info("[ FLARE PARAMETERS ] - t_start, rise, decay, amplitude")
+
+        for fit, err in zip(flares['parameters'], flares['errors']):
+            logger.info(f'Flare - {fit[0]:.2f} ({err[0]:.2f}) / {fit[1]:.2f} ({err[1]:.2f}) / {fit[2]:.2f} ({err[2]:.2f}) / {fit[3]:.2g} ({err[3]:.2g})')
+            flare = fred_flare(constant_range, fit)
+            total_model += flare # Add flare to total model.
+            plt.plot(constant_range, fred_flare(constant_range, fit), color='tab:green', linewidth=0.6) # Plot each flare.
+
+    # Plot total model.
+    plt.plot(constant_range, total_model, color='tab:orange')
+    upper_flux, lower_flux = data['flux'].max() * 10, data['flux'].min() * 0.1
+    plt.ylim(lower_flux, upper_flux)
+    plt.title('test')
 
     plt.loglog()
     plt.show()
-
-
-    if flares and continuum:
-
-        #########################
-        #### Temporary block ####
-
-        flr_strt, flr_end = flares[0][0], flares[-1][2]
-
-        plt.scatter(data.time, data.flux - broken_powerlaw(data.time, modelpar))   
-        plt.axhline(y=0, color='grey', linewidth=1, linestyle='--')
-        plt.xlim(data.iloc[flr_strt].time * 0.9, data.iloc[flr_end].time * 1.1)
-        plt.semilogx()
-        # plt.show()
-
-        # Take data - model
-        # For each flare, I can estimate rthe starting parameters.
-        # Centre = peak of flares.
-        # Rise/decay indices as a simple gradient calc?
-
-
-        #### Temporary block ####
-        #########################
 
     return
