@@ -1,12 +1,8 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import logging
-
 from ..utility import calculate_fit_statistics
 
 logger = logging.getLogger('laff')
-
-## Initial scipy fit.
 
 #################################################################################
 ### CONTINUUM MODEL
@@ -88,7 +84,7 @@ def find_intial_fit(data):
 
     nparam = len(best_fit)
     n = int((nparam-2)/2)
-    logger.info(f"Initial fit found {n} breaks.")
+    logger.info(f"Initial continuum fit found {n} breaks.")
 
     logger.debug("ODR initial fit parameters.")
     logger.debug(f'Slopes: {list(best_fit[:n+1])}')
@@ -152,7 +148,7 @@ def fit_continuum_mcmc(data, breaknum, init_param, init_err):
     std_norm = init_err[-1]
     p0[:, -1] = guess_norm + std_norm * np.random.randn(nwalkers)
 
-    logger.info("Running MCMC...")
+    logger.info("Running continuum MCMC...")
 
     sampler = emcee.EnsembleSampler(nwalkers, ndim, log_posterior, \
         args=(data.time, data.flux, data.time_perr, data.flux_perr))
@@ -162,12 +158,12 @@ def fit_continuum_mcmc(data, breaknum, init_param, init_err):
 
     samples = sampler.chain[:, burnin:, :].reshape(-1, ndim)
 
-    fitter_par = list(map(lambda v: np.median(v), samples.T))
+    fitted_par = list(map(lambda v: np.median(v), samples.T))
     fitted_err = list(map(lambda v: np.std(v), samples.T))
 
-    logger.info("Fitting complete.")
+    logger.info("Continuum complete.")
 
-    return fitter_par, fitted_err
+    return fitted_par, fitted_err
 
 def log_likelihood(params, x, y, x_err, y_err):
     model = broken_powerlaw(x, params)
