@@ -74,13 +74,12 @@ def find_intial_fit(data):
 
         # Evaluate fit.
         fit_stats = calculate_fit_statistics(data, broken_powerlaw, fit_par)
-        deltaAIC = (2 * fit_stats['npar']) + (fit_stats['n'] * np.log(fit_stats['rchisq']))
+        deltaAIC = fit_stats['deltaAIC']
 
-        model_fits.append([fit_par, deltaAIC, fit_err])
-
+        model_fits.append([fit_par, deltaAIC, fit_err, fit_stats])
 
     # Obtain best fitted mdel.
-    best_fit, best_aic, best_err = min(model_fits, key=lambda x: x[1])
+    best_fit, best_aic, best_err, best_stats = min(model_fits, key=lambda x: x[1])
 
     nparam = len(best_fit)
     n = int((nparam-2)/2)
@@ -91,9 +90,7 @@ def find_intial_fit(data):
     logger.debug(f'Breaks: {list(best_fit[n+1:-1])}')
     logger.debug(f'Normal: {best_fit[-1]}')
 
-    ###
-
-    return best_fit, best_err
+    return best_fit, best_err, best_stats
 
 def odr_fitter(data, inputpar):
     data = RealData(data.time, data.flux, data.time_perr, data.flux_perr)
