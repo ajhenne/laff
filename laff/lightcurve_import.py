@@ -31,7 +31,7 @@ def _swift_online_archive(data_filepath):
     qdptable = []
     i = 0
 
-    allowed_modes = ['WTSLEW', 'WT', 'PC_incbad',
+    allowed_modes = ['WTSLEW', 'WT', 'WT_incbad', 'PC_incbad',
                     'batSNR5flux', 'xrtwtslewflux', 'xrtwtflux', 'xrtpcflux_incbad']
     allowed_modes = [[item] for item in allowed_modes]
 
