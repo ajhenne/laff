@@ -1,6 +1,24 @@
 import numpy as np
+import logging
 
-def _find_deviations(data):
+logger = logging.getLogger('laff')
+
+def possible_flares(data):
+    
+    
+    # Find deviations, or possible flares.
+    deviations = find_deviations(data)
+    logger.debug(f'{len(deviations)} deviations found.')
+
+    starts = find_minima(data, deviations) # Refine deviations by looking for local minima, or flare starts.
+    peaks = find_maxima(data, starts) # For each flare start, find the corresponding peak.
+    starts, peaks = _remove_Duplicates(data, starts, peaks) # Combine any duplicate start/peaks.
+
+    DECAYPAR = 3
+    ends = _find_end(data, starts, peaks, DECAYPAR) # For each flare peak, find the corresponding flare end.
+    return starts, peaks, ends
+
+def find_deviations(data):
 
     deviations = []
     counter = 0
@@ -13,76 +31,78 @@ def _find_deviations(data):
             counter = 0
 
         if counter == 2:
-            check = data.iloc[i+1].flux + (data.iloc[i+1].flux_perr * 2) > data.iloc[i-1].flux
+            check = data.iloc[i+1].flux + (data.iloc[i+1].flux_perr * 1.5) > data.iloc[i-1].flux
             if check:
+                logger.debug(f'find_deviations(): dev found at {i-1} - {data.iloc[i-1].time}s')
                 deviations.append(i-1)
-            counter = 0
+                counter = 0
+            else:
+                counter = 1
 
     return sorted(set(deviations))
 
-# def _find_deviations(data):
-
-#     deviations = []
-
-#     for index in data.index[:-10]:
-
-#         flux = np.array(data.flux)
-
-#         # Just return false if next point is lower.
-#         if flux[index] < flux[index+1]:
-#             continue
-
-#         # Check it increases 3 out of 5 times.
-#         if not sum([(flux[index+i+1] > flux[index+i]) for i in range(0,5,1)]) >= 3:
-#             continue
-
-#         # Calculate average of values before and after point.
-#         averageBefore = np.average(flux[index-5:index])
-#         averageAfter = np.average(flux[index+1:index+6])
-
-#         # Get point plus error.
-#         pointAndError = flux[index] + data.iloc[index].flux_perr
-
-#         # Check it satisfies average.
-#         if not pointAndError > averageBefore:
-#             continue
-
-#         deviations.append(index)
-
-#     return sorted(set(deviations))
-
-def _find_minima(data, deviations):
-
+def find_minima(data, deviations):
+    
     minima = []
 
     for deviation_index in deviations:
-        # Check boundaries - don't want to loop search over start/end of light
-        # curve.
-        if deviation_index < 25:
-            points = data.iloc[:25 - deviation_index]
-        elif (deviation_index+25) > data.idxmax('index').time:
-            points = data.iloc[deviation_index-10:data.idxmax('index').time]
+
+        if deviation_index == 0:
+            startpoint = 0
+            endpoint   = 1
+            continue
+
+        if deviation_index < 10:
+            startpoint = 0
+            endpoint = deviation_index
+
         else:
-            points = data.iloc[deviation_index-25:deviation_index+2]
-        # Default: check 30 points before and a couple after.
-        minima.append(data[data.flux == min(points.flux)].index.values[0])
+            startpoint = deviation_index - 10
+            endpoint    = deviation_index
+
+        points = data.iloc[startpoint:endpoint]
+        minimum = data[data.flux == min(points.flux)].index.values[0]
+        logger.debug(f"find_minima() - original index {deviation_index}, new index {minimum}.")
+        minima.append(minimum)
 
     return sorted(set(minima))
 
-def _find_maxima(data, starts):
+def find_maxima(data, starts):
 
     maxima = []
 
     for start_index in starts:
-        # Check boundaries - don't want to loop search over start/end of light curve.
-        if (data.idxmax('index').time - start_index) <= 30:
-            points = data.iloc[start_index:data.idxmax('index').time]
-        else:
-            points = data.iloc[start_index:start_index+30]
-        # Check the next 30 points.
-        maxima.append(data[data.flux == max(points.flux)].index.values[0])
 
-    return sorted(maxima)
+        if abs(data.idxmax('index').time - start_index) < 30:
+            startpoint = start_index
+            endpoint   = data.idxmax('index').time - 1
+
+        else:
+
+            prev_chunk = data['flux'].iloc[start_index]
+            next_chunk = np.average(data['flux'].loc[start_index:start_index+5])
+            chunkcount = 1
+
+            while next_chunk > prev_chunk:
+                chunkcount += 1
+                prev_chunk = next_chunk
+                next_chunk = np.average(data['flux'].loc[start_index+(chunkcount*5):start_index+(chunkcount*5)+5]) / 5
+                logger.critical(f'prevchunk {prev_chunk} and nextchunk {next_chunk}')
+
+            logger.critical(f"nextchunkavg finally lower than original flux comparison at {chunkcount}")
+
+            finalrange = (chunkcount + 1) * 5
+            logger.critical(f"final range is +{finalrange}")
+
+            startpoint = start_index
+            endpoint   = start_index + finalrange
+
+        points = data.iloc[startpoint:endpoint]
+        maximum = data[data.flux == max(points.flux)].index.values[0]
+        logger.debug(f"find_maxima() - for {start_index} peak found at {maximum}")
+        maxima.append(maximum)
+
+    return maxima
 
 def _remove_Duplicates(data, startlist, peaklist):
     """
@@ -194,14 +214,17 @@ def _check_AverageNoise(data, startidx, peakidx, endidx):
     return check
 
 def _check_PulseShape(data, startidx, peakidx, endidx):
-
-    rise_phase = _calc_grad(data, startidx, peakidx, indexIsRange=True)
-    rise_condition = sum(x > 0 for x in rise_phase) / len(rise_phase)
+    try:
+        rise_phase = _calc_grad(data, startidx, peakidx, indexIsRange=True)
+        rise_condition = sum(x > 0 for x in rise_phase) / len(rise_phase)
+    except ZeroDivisionError:
+        return True
 
     decay_phase = _calc_grad(data, peakidx, endidx, indexIsRange=True)
     decay_condition = sum(x < 0 for x in decay_phase) / len(decay_phase)
-
-    check = rise_condition > 0.6 and decay_condition > 0.6
+    
+    logger.debug(f'check3 conditions are {rise_condition} & {decay_condition}')
+    check = rise_condition >= 0.6 and decay_condition >= 0.6
     return check
 
 def _calc_grad(data, index1, index2, indexIsRange=False):
