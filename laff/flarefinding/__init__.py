@@ -1,9 +1,7 @@
 from .flarefinding import (
-    _find_deviations,
-    _find_minima,
-    _find_maxima,
-    _find_end,
+    possible_flares,
     _remove_Duplicates,
     _check_AverageNoise,
     _check_FluxIncrease,
-    _check_PulseShape )
+    _check_PulseShape
+    )
