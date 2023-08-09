@@ -56,7 +56,7 @@ def all_flares(x, params):
 
 from scipy.odr import ODR, Model, RealData
 
-def flare_fitter(data, residual, flares):
+def flare_fitter(data, residual, flares, use_odr=False):
 
     logger.info("Fitting flares...")
 
@@ -65,27 +65,37 @@ def flare_fitter(data, residual, flares):
 
     for start, peak, end in zip(flares[0], flares[1], flares[2]):
 
-        data_flare = RealData(residual.time[start:end], residual.flux[start:end], residual.time_perr[start:end], residual.flux_perr[start:end])
-        
+        data_flare = data.copy()
+        data_flare['flux'] = 0
+        data_flare['flux'].iloc[start:end] = residual.iloc[start:end]
         # Parameter estimates.
         t_peak = residual['time'].iloc[peak]
         t_start = residual['time'].iloc[start]
         rise = t_peak - t_start
         decay = (residual['time'].iloc[end] - t_peak)
-        amplitude = residual['flux'].iloc[peak] - residual['flux'].iloc[start]
-        input_par = [t_start, rise, decay, abs(amplitude)]
+        amplitude = abs(residual['flux'].iloc[peak] - residual['flux'].iloc[start])
+        input_par = [t_start, rise, decay, amplitude]
 
         # Perform fit.
         logger.debug(f"For flare indices {start}/{peak}/{end}:")
         fit_par, fit_err = odr_fitter(data_flare, input_par)
+        fit_par = [abs(x) for x in fit_par]
         logger.debug(f"ODR Par: {fit_par}")
         logger.debug(f"ODR Err: {fit_err}")
 
         # Perform MCMC fit.
-        logger.debug(f"Performing MCMC fit...")
-        final_par, final_err = fit_flare_mcmc(residual, fit_par, fit_err)
-        logger.debug(f"MCMC Par: {final_par}")
-        logger.debug(f"MCMC Err: {final_err}")
+        if use_odr == True:
+            final_par, final_err = fit_par, fit_err
+            logger.debug(f"Forcing ODR fit, skipping MCMC fitting.")
+        else:
+            logger.debug(f"Performing MCMC fit...")
+            try:
+                final_par, final_err = fit_flare_mcmc(data_flare, fit_par, fit_err)
+            except ValueError: # If MCMC fails.
+                logger.debug(f"MCMC failed - using ODR fit.")
+                final_par, final_err = fit_par, fit_err
+            logger.debug(f"MCMC Par: {final_par}")
+            logger.debug(f"MCMC Err: {final_err}")
 
         # Remove from residuals.
         fitted_flare = fred_flare(data.time, final_par)
@@ -99,8 +109,8 @@ def flare_fitter(data, residual, flares):
     return flareFits, flareErrs
 
 def odr_fitter(data, inputpar):
+    data = RealData(data.time, data.flux, data.time_perr, data.flux_perr)  
     model = Model(fred_flare_wrapper)
-
     odr = ODR(data, model, beta0=inputpar)
 
     odr.set_job(fit_type=0)
@@ -123,25 +133,25 @@ import emcee
 def fit_flare_mcmc(data, init_param, init_err):
 
     ndim = len(init_param)
-    nwalkers = 25
-    nsteps = 250
+    nwalkers = 30
+    nsteps = 200
 
     p0 = np.zeros((nwalkers, ndim))
 
     guess_tstart = init_param[0]
-    std_tstart = init_err[0] / 3.4
+    std_tstart = init_param[0]
     p0[:, 0] = guess_tstart + std_tstart * np.random.randn(nwalkers)
 
     guess_rise = init_param[1]
-    std_rise = init_err[1] / 3.4
+    std_rise = init_param[1]
     p0[:, 1] = guess_rise + std_rise * np.random.randn(nwalkers)
 
     guess_decay = init_param[2]
-    std_decay = init_err[2] / 3.4
+    std_decay = init_param[2]
     p0[:, 2] = guess_decay + std_decay * np.random.randn(nwalkers)
 
     guess_amplitude = init_param[3]
-    std_ampltiude = init_err[3] / 3.4
+    std_ampltiude = init_param[3]
     p0[:, 3] = guess_amplitude + std_ampltiude * np.random.randn(nwalkers)
 
     logger.debug("Running flare MCMC...")
@@ -150,7 +160,7 @@ def fit_flare_mcmc(data, init_param, init_err):
         args=(data.time, data.flux, data.time_perr, data.flux_perr))
     sampler.run_mcmc(p0, nsteps)
 
-    burnin = 50
+    burnin = 25
 
     samples = sampler.chain[:, burnin:, :].reshape(-1, ndim)
 
@@ -177,10 +187,14 @@ def fl_log_prior(params, TIME_END):
     if not (t_start > 0) and (t_start < TIME_END):
         return -np.inf
 
-    if rise > TIME_END or rise < 0:
+    if rise < 0:
+        return -np.inf
+    if rise > TIME_END:
         return -np.inf
 
-    if decay > TIME_END or decay < 0:
+    if decay < 0:
+        return -np.inf
+    if decay > TIME_END:
         return -np.inf
 
     if amplitude < 0:
