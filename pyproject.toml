@@ -16,6 +16,10 @@ lmfit = "^1.2.1"
 emcee = "^3.1.4"
 
 
+[tool.poetry.group.dev.dependencies]
+jupyter = "^1.0.0"
+notebook = "^7.0.2"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

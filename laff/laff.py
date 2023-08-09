@@ -9,12 +9,14 @@ import corner
 # Ignore warnings.
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
+from .utility import check_data_input
+
 #################################################################################
 ### LOGGER
 #################################################################################
 
 logger = logging.getLogger('laff')
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 handler = logging.StreamHandler()
 formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 handler.setFormatter(formatter)
@@ -43,51 +45,16 @@ def findFlares(data):
     """
     logger.debug("Starting findFlares")
 
-    from .flarefinding import (
-        _find_deviations,
-        _find_minima,
-        _find_maxima,
-        _find_end,
-        _remove_Duplicates,
-        _check_AverageNoise,
-        _check_FluxIncrease,
-        _check_PulseShape )
-
     # Check data is correct input format.
-    if not isinstance(data, pd.DataFrame):
-        raise TypeError(f"Invalid input data type. Should be pandas dataframe.")
-
-    # Check column names.
-    expected_columns = ['time', 'time_perr', 'time_nerr', 'flux', 'flux_perr', 'flux_nerr']
-    if data.shape[1] == 4:
-        data.columns = ['time', 'time_perr', 'flux', 'flux_perr']
-        data['time_nerr'] = data['time_perr']
-        data['flux_nerr'] = data['flux_perr']
-        data.columns = expected_columns
-    elif data.shape[1] == 6:
-        data.columns = expected_columns
-    else:
-        raise ValueError(f"Expected dataframe with 4 or 6 columns - got {data.shape[1]}.")
+    check_data_input(data)
 
     # Cutoff late data.
     LATE_CUTOFF = True
     data = data[data.time < 2000] if LATE_CUTOFF else data
 
-    # Find deviations, or possible flares.
-    deviations = _find_deviations(data)
+    from .flarefinding import possible_flares, _check_AverageNoise, _check_FluxIncrease, _check_PulseShape
 
-    # Refine deviations by looking for local minima, or flare starts.
-    starts = _find_minima(data, deviations)
-
-    # For each flare start, find the corresponding peak.
-    peaks = _find_maxima(data, starts)
-
-    # Combine any duplicate start/peaks.
-    starts, peaks = _remove_Duplicates(data, starts, peaks)
-
-    # For each flare peak, find the corresponding flare end.
-    DECAYPAR = 3
-    ends = _find_end(data, starts, peaks, DECAYPAR)
+    starts, peaks, ends = possible_flares(data) # Find possible flares.
 
     # Perform some checks to ensure the found flares are valid.
     flare_start, flare_peak, flare_end = [], [], []
@@ -95,6 +62,7 @@ def findFlares(data):
         check1 = _check_AverageNoise(data, start, peak, end)
         check2 = _check_FluxIncrease(data, start, peak)
         check3 = _check_PulseShape(data, start, peak, end)
+        logger.debug(f"Flare {round(data['time'].iloc[start],1)}-{round(data['time'].iloc[end],1)}s checks: {check1}/{check2}/{check3}")
         if check1 and check2 and check3:
             flare_start.append(int(start))
             flare_peak.append(int(peak))
@@ -107,25 +75,46 @@ def findFlares(data):
 ### CONTINUUM FITTING
 #################################################################################
 
-def fitContinuum(data, flare_indices):
+def fitContinuum(data, flare_indices, use_odr=False):
     logger.debug(f"Starting fitContinuum")
 
     from .modelling import find_intial_fit, fit_continuum_mcmc
 
     # Remove flare data.
     if flare_indices:
+        logger.critical(f"{flare_indices}")
         for start, end in zip(reversed(flare_indices[0]), reversed(flare_indices[2])):
             data = data.drop(index=range(start, end))
 
     # Use ODR & AIC to find best number of powerlaw breaks.
-    initial_fit, initial_fit_err = find_intial_fit(data)
+    initial_fit, initial_fit_err, initial_fit_stats = find_intial_fit(data)
     break_number = int((len(initial_fit-2)/2)-1)
 
     # Run MCMC to refine fit.
-    final_par, final_err = fit_continuum_mcmc(data, break_number, initial_fit, initial_fit_err)
+    if use_odr == True:
+        final_par, final_err = initial_fit, initial_fit_err
+        logger.debug("Forcing ODR, skipping MCMC fitting.")
+    else:
+        final_par, final_err = fit_continuum_mcmc(data, break_number, initial_fit, initial_fit_err)
 
     from .utility import calculate_fit_statistics
     final_fit_statistics = calculate_fit_statistics(data, broken_powerlaw, final_par)
+
+    odr_rchisq = initial_fit_stats['rchisq']
+    mcmc_rchisq = final_fit_statistics['rchisq']
+    logger.debug(f'ODR rchisq: {odr_rchisq}')
+    logger.debug(f'MCMC rchisq: {mcmc_rchisq}')
+
+    if mcmc_rchisq == 0 or mcmc_rchisq < 0.1 or mcmc_rchisq == np.inf or mcmc_rchisq == -np.inf:
+        logger.debug('MCMC appears to be bad, using ODR fit.')
+        final_par, final_err, final_fit_statistics = initial_fit, initial_fit_err, initial_fit_stats
+
+    elif abs(odr_rchisq-1) < abs(mcmc_rchisq-1):
+        if abs(odr_rchisq-1) < 1.3 * abs(mcmc_rchisq-1):
+            logger.debug("ODR better than MCMC, using ODR fit.")
+            final_par, final_err, final_fit_statistics = initial_fit, initial_fit_err, initial_fit_stats
+        else:
+            logger.debug("ODR better than MCMC fit, but not significantly enough.")
 
     return {'parameters': final_par, 'errors': final_err, 'fit_statistics': final_fit_statistics}
 
@@ -137,11 +126,14 @@ def fitFlares(data, flares, continuum):
 
     from .modelling import flare_fitter, fred_flare
 
+    if not flares:
+        return False
+
     fitted_model = broken_powerlaw(data.time, continuum['parameters'])
     data_subtracted = data.copy()
     data_subtracted['flux'] = data.flux - fitted_model
 
-    # Fit flares with ODR.
+    # Fit each flare.
     flare_fits, flare_errs = flare_fitter(data, data_subtracted, flares)
 
     return {'parameters': flare_fits, 'errors': flare_errs}
@@ -151,6 +143,8 @@ def fitFlares(data, flares, continuum):
 #################################################################################
 
 def fitGRB(data, flare_indices=None, continuum=None, flares=None):
+
+    check_data_input(data)
 
     logger.debug(f"Starting fitGRB")
 
@@ -172,7 +166,7 @@ def fitGRB(data, flare_indices=None, continuum=None, flares=None):
 ### PLOTTING
 #################################################################################
 
-def plotGRB(data, flare_indices=False, continuum=False, flares=False):
+def plotGRB(data, flare_indices=None, continuum=None, flares=None):
     logger.debug(f"Starting plotGRB")
     logger.debug(f"Input flares: {flare_indices}")
     logger.debug(f"Input continuum: {continuum}")
@@ -202,7 +196,7 @@ def plotGRB(data, flare_indices=False, continuum=False, flares=False):
     marker='', linestyle='None', capsize=0)
 
     if continuum:
-        if not flare_indices:
+        if flare_indices is None:
             raise ValueError("Cannot input a continuum without flare indices.")
 
         modelpar, modelerr = continuum['parameters'], continuum['errors']
@@ -228,6 +222,7 @@ def plotGRB(data, flare_indices=False, continuum=False, flares=False):
 
         # Plot continuum model.
         fittedContinuum = broken_powerlaw(constant_range, modelpar)
+        total_model = fittedContinuum
         plt.plot(constant_range, fittedContinuum, color='c')
 
         # Plot powerlaw breaks.
@@ -242,8 +237,6 @@ def plotGRB(data, flare_indices=False, continuum=False, flares=False):
         
         from .modelling import fred_flare
 
-        total_model = fittedContinuum
-
         logger.info("[ FLARE PARAMETERS ] - t_start, rise, decay, amplitude")
 
         for fit, err in zip(flares['parameters'], flares['errors']):
@@ -252,11 +245,11 @@ def plotGRB(data, flare_indices=False, continuum=False, flares=False):
             total_model += flare # Add flare to total model.
             plt.plot(constant_range, fred_flare(constant_range, fit), color='tab:green', linewidth=0.6) # Plot each flare.
 
-    # Plot total model.
-    plt.plot(constant_range, total_model, color='tab:orange')
-    upper_flux, lower_flux = data['flux'].max() * 10, data['flux'].min() * 0.1
-    plt.ylim(lower_flux, upper_flux)
-    plt.title('test')
+        # Plot total model.
+        plt.plot(constant_range, total_model, color='tab:orange')
+        upper_flux, lower_flux = data['flux'].max() * 10, data['flux'].min() * 0.1
+        plt.ylim(lower_flux, upper_flux)
+        plt.title('test')
 
     plt.loglog()
     plt.show()
