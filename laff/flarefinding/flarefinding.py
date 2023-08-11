@@ -209,6 +209,9 @@ def _find_end(data, starts, peaks, DECAYPAR):
 
 def combine_overlaps(data, starts, peaks, ends):
 
+    if len(starts) == 0:
+        return [], [], []
+
     combined_starts = []
     combined_peaks = []
     combined_ends = []
