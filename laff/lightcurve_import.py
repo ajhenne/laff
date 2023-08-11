@@ -81,7 +81,7 @@ def _swift_python_query(data_filepath):
             break
 
     data = vstack(qdptable).to_pandas()
-    data = data.sort_valeus(by=['col1'])
+    data = data.sort_values(by=['col1'])
     data = data.reset_index(drop=True)
     data.columns = ['time', 'time_perr', 'time_nerr', 'flux', 'flux_perr', 'flux_nerr']
 

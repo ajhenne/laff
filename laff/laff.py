@@ -4,7 +4,6 @@ import numpy as np
 import logging
 import warnings
 import emcee
-import corner
 
 # Ignore warnings.
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -16,7 +15,7 @@ from .utility import check_data_input
 #################################################################################
 
 logger = logging.getLogger('laff')
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 handler = logging.StreamHandler()
 formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 handler.setFormatter(formatter)
@@ -96,7 +95,11 @@ def fitContinuum(data, flare_indices, use_odr=False):
         final_par, final_err = initial_fit, initial_fit_err
         logger.debug("Forcing ODR, skipping MCMC fitting.")
     else:
-        final_par, final_err = fit_continuum_mcmc(data, break_number, initial_fit, initial_fit_err)
+        try:
+            final_par, final_err = fit_continuum_mcmc(data, break_number, initial_fit, initial_fit_err)
+        except ValueError:
+            final_par, final_err = initial_fit, initial_fit_err
+            logger.debug(f"MCMC failed, defaulting to ODR.")
 
     from .utility import calculate_fit_statistics
     final_fit_statistics = calculate_fit_statistics(data, broken_powerlaw, final_par)

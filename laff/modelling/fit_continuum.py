@@ -149,7 +149,10 @@ def fit_continuum_mcmc(data, breaknum, init_param, init_err):
 
     sampler = emcee.EnsembleSampler(nwalkers, ndim, log_posterior, \
         args=(data.time, data.flux, data.time_perr, data.flux_perr))
-    sampler.run_mcmc(p0, nsteps)
+    try:
+        sampler.run_mcmc(p0, nsteps)
+    except:
+        sampler.run_mcmc(p0, nsteps * 3)
 
     burnin = 100
 
