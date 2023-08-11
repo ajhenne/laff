@@ -3,5 +3,6 @@ from .flarefinding import (
     _remove_Duplicates,
     _check_AverageNoise,
     _check_FluxIncrease,
-    _check_PulseShape
+    _check_PulseShape,
+    _check_AboveContinuum
     )
