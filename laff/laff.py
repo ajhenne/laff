@@ -52,7 +52,7 @@ def findFlares(data):
     LATE_CUTOFF = True
     data = data[data.time < 2000] if LATE_CUTOFF else data
 
-    from .flarefinding import possible_flares, _check_AverageNoise, _check_FluxIncrease, _check_PulseShape
+    from .flarefinding import possible_flares, _check_AverageNoise, _check_FluxIncrease, _check_PulseShape, _check_AboveContinuum
 
     starts, peaks, ends = possible_flares(data) # Find possible flares.
 
@@ -62,8 +62,9 @@ def findFlares(data):
         check1 = _check_AverageNoise(data, start, peak, end)
         check2 = _check_FluxIncrease(data, start, peak)
         check3 = _check_PulseShape(data, start, peak, end)
-        logger.debug(f"Flare {round(data['time'].iloc[start],1)}-{round(data['time'].iloc[end],1)}s checks: {check1}/{check2}/{check3}")
-        if check1 and check2 and check3:
+        check4 = _check_AboveContinuum(data, start, peak, end)
+        logger.debug(f"Flare {round(data['time'].iloc[start],1)}-{round(data['time'].iloc[end],1)}s checks: {check1}/{check2}/{check3}/{check4}")
+        if check1 and check2 and check3 and check4:
             flare_start.append(int(start))
             flare_peak.append(int(peak))
             flare_end.append(int(end))
