@@ -1,5 +1,8 @@
 import pandas as pd
 from astropy.table import Table, vstack
+import logging
+
+logger = logging.getLogger('laff')
 
 def lcimport(filepath, format="swift"):
     """
@@ -23,6 +26,9 @@ def lcimport(filepath, format="swift"):
     
     else:
         raise ValueError("Invalid format parameter.")
+
+    logger.info('Data import successful.')
+    logger.debug(f'Data filepath: {filepath}')
         
     return data
 
