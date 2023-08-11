@@ -4,7 +4,7 @@ import logging
 
 logger = logging.getLogger('laff')
 
-def lcimport(filepath, format="swift"):
+def lcimport(filepath, format="online_archive"):
     """
     Import a lightcurve to a format ready for LAFF.
     
@@ -21,8 +21,11 @@ def lcimport(filepath, format="swift"):
             Formatted pandas datatable.
     """
 
-    if format == "swift":
+    if format == "online_archive":
         data = _swift_online_archive(filepath)
+
+    elif format == "python_query":
+        data = _swift_python_query(filepath)
     
     else:
         raise ValueError("Invalid format parameter.")
@@ -56,6 +59,29 @@ def _swift_online_archive(data_filepath):
     # Prepare data to pandas frame.
     data = vstack(qdptable).to_pandas()
     data = data.sort_values(by=['col1'])
+    data = data.reset_index(drop=True)
+    data.columns = ['time', 'time_perr', 'time_nerr', 'flux', 'flux_perr', 'flux_nerr']
+
+    return data
+
+def _swift_python_query(data_filepath):
+
+    qdptable = []
+    i = 0
+
+    while i < 10:
+        try:
+            import_table = Table.read(data_filepath, format='ascii.qdp', table_id=i)
+            qdptable.append(import_table)
+            logger.debug(f'Appending i = {i}')
+            i += 1
+        except FileNotFoundError:
+            raise FileNotFoundError(f"No file found at {data_filepath}.")
+        except IndexError:
+            break
+
+    data = vstack(qdptable).to_pandas()
+    data = data.sort_valeus(by=['col1'])
     data = data.reset_index(drop=True)
     data.columns = ['time', 'time_perr', 'time_nerr', 'flux', 'flux_perr', 'flux_nerr']
 
