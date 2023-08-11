@@ -11,11 +11,17 @@ def possible_flares(data):
     logger.debug(f'{len(deviations)} deviations found.')
 
     starts = find_minima(data, deviations) # Refine deviations by looking for local minima, or flare starts.
+    logger.debug(f'{len(starts)} flare starts identified.')
+
     peaks = find_maxima(data, starts) # For each flare start, find the corresponding peak.
     starts, peaks = _remove_Duplicates(data, starts, peaks) # Combine any duplicate start/peaks.
 
     DECAYPAR = 3
     ends = _find_end(data, starts, peaks, DECAYPAR) # For each flare peak, find the corresponding flare end.
+
+    # Combine any overlapping flares.
+    starts, peaks, ends = combine_overlaps(data, starts, peaks, ends)
+
     return starts, peaks, ends
 
 def find_deviations(data):
@@ -86,7 +92,7 @@ def find_maxima(data, starts):
             while next_chunk > prev_chunk:
                 chunkcount += 1
                 prev_chunk = next_chunk
-                next_chunk = np.average(data['flux'].loc[start_index+(chunkcount*5):start_index+(chunkcount*5)+5]) / 5
+                next_chunk = np.average(data['flux'].loc[start_index+(chunkcount*5):start_index+(chunkcount*5)+5])
                 logger.critical(f'prevchunk {prev_chunk} and nextchunk {next_chunk}')
 
             logger.critical(f"nextchunkavg finally lower than original flux comparison at {chunkcount}")
@@ -201,13 +207,39 @@ def _find_end(data, starts, peaks, DECAYPAR):
 
     return sorted(ends)
 
+def combine_overlaps(data, starts, peaks, ends):
+
+    combined_starts = []
+    combined_peaks = []
+    combined_ends = []
+
+    sorted_pairs = sorted(zip(starts, peaks, ends), key=lambda x: x[0])
+    current_start, current_peak, current_end = sorted_pairs[0]
+
+    for start, peak, end in sorted_pairs[1:]:
+        if start <= current_end:
+            if data['flux'].iloc[peak] > data['flux'].iloc[current_peak]:
+                current_peak = peak
+            current_end = max(current_end, end)
+        else:
+            combined_starts.append(current_start)
+            combined_peaks.append(current_peak)
+            combined_ends.append(current_end)
+            current_start, current_peak, current_end = start, peak, end
+
+    combined_starts.append(current_start)
+    combined_peaks.append(current_peak)
+    combined_ends.append(current_end)
+
+    return combined_starts, combined_peaks, combined_ends
+
 def _check_FluxIncrease(data, startidx, peakidx):
     """Check the flare increase is greater than x2 the start error."""
     check = data.iloc[peakidx].flux > (data.iloc[startidx].flux + (2 * data.iloc[startidx].flux_perr))
     return check
 
 def _check_AverageNoise(data, startidx, peakidx, endidx):
-    """Check if flare is greater than x2 the average noise across the flare."""
+    """Check if flare is greater than x1.75 the average noise across the flare."""
     average_noise = abs(np.average(data.iloc[startidx:endidx].flux_perr)) + abs(np.average(data.iloc[startidx:endidx].flux_nerr))
     flux_increase = min(data.iloc[peakidx].flux - data.iloc[startidx].flux, data.iloc[peakidx].flux - data.iloc[endidx].flux)
     check = flux_increase > average_noise * 2
@@ -224,7 +256,24 @@ def _check_PulseShape(data, startidx, peakidx, endidx):
     decay_condition = sum(x < 0 for x in decay_phase) / len(decay_phase)
     
     logger.debug(f'check3 conditions are {rise_condition} & {decay_condition}')
-    check = rise_condition >= 0.6 and decay_condition >= 0.6
+    check = rise_condition >= 0.6 and decay_condition >= 0.4
+    return check
+
+def _check_AboveContinuum(data, startidx, peakidx, endidx):
+    if startidx == 0:
+        startidx = 1
+
+    slope = (data['flux'].iloc[endidx+1] - data['flux'].iloc[startidx-1])/(data['time'].iloc[endidx+1]-data['time'].iloc[startidx-1])
+    intercept = data['flux'].iloc[startidx-1] - slope * data['time'].iloc[startidx-1]
+
+    points_above = 0
+
+    for flux, time in zip(data['flux'].iloc[startidx:endidx], data['time'].iloc[startidx:endidx]):
+        if flux > (slope * time + intercept):
+            points_above += 1
+
+    logger.debug(f'check4 points above are {points_above} over {len(data["flux"].iloc[startidx:endidx])}')
+    check = points_above > len(data['flux'].iloc[startidx:endidx])/2
     return check
 
 def _calc_grad(data, index1, index2, indexIsRange=False):
