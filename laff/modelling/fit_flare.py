@@ -67,7 +67,8 @@ def flare_fitter(data, residual, flares, use_odr=False):
 
         data_flare = data.copy()
         data_flare['flux'] = 0
-        data_flare['flux'].iloc[start:end] = residual.iloc[start:end]
+        logger.critical(f'{residual.iloc[start:end]}')
+        data_flare['flux'].iloc[start:end] = residual['flux'].iloc[start:end]
         # Parameter estimates.
         t_peak = residual['time'].iloc[peak]
         t_start = residual['time'].iloc[start]
@@ -80,22 +81,33 @@ def flare_fitter(data, residual, flares, use_odr=False):
         logger.debug(f"For flare indices {start}/{peak}/{end}:")
         fit_par, fit_err = odr_fitter(data_flare, input_par)
         fit_par = [abs(x) for x in fit_par]
+        odr_fit_par = calculate_fit_statistics(data, fred_flare, fit_par)
+        odr_rchisq = odr_fit_par['rchisq']
         logger.debug(f"ODR Par: {fit_par}")
         logger.debug(f"ODR Err: {fit_err}")
 
-        # Perform MCMC fit.
-        if use_odr == True:
+        try:
+            final_par, final_err = fit_flare_mcmc(data_flare, fit_par, fit_err)
+            final_fit_statistics = calculate_fit_statistics(data, fred_flare, final_par)
+            mcmc_rchisq = final_fit_statistics['rchisq']
+
+            if mcmc_rchisq == 0 or mcmc_rchisq < 0.1 or mcmc_rchisq == np.inf or mcmc_rchisq == -np.inf:
+                logger.debug(f'MCMC appears to be bad, using ODR fit for flare {start}-{end}.')
+                final_par, final_err, final_fit_statistics = fit_par, fit_err, odr_fit_par
+
+            elif abs(odr_rchisq-1) < abs(mcmc_rchisq-1):
+                if abs(odr_rchisq) < 1.3 * abs(mcmc_rchisq-1):
+                    logger.debug(f"ODR better than MCMC for flare {start}-{end}, using ODR.")
+                    final_par, final_err, final_fit_statistics = fit_par, fit_err, odr_fit_par
+                else:
+                    logger.debug(f"ODR better than MCMC fit for flare {start}-{end}, but not significantly enough.")
+
+        except ValueError:
+            logger.debug(f'MCMC failed - using ODR fit.')
             final_par, final_err = fit_par, fit_err
-            logger.debug(f"Forcing ODR fit, skipping MCMC fitting.")
-        else:
-            logger.debug(f"Performing MCMC fit...")
-            try:
-                final_par, final_err = fit_flare_mcmc(data_flare, fit_par, fit_err)
-            except ValueError: # If MCMC fails.
-                logger.debug(f"MCMC failed - using ODR fit.")
-                final_par, final_err = fit_par, fit_err
-            logger.debug(f"MCMC Par: {final_par}")
-            logger.debug(f"MCMC Err: {final_err}")
+
+        logger.debug(f"MCMC Par: {final_par}")
+        logger.debug(f"MCMC Err: {final_err}")
 
         # Remove from residuals.
         fitted_flare = fred_flare(data.time, final_par)
