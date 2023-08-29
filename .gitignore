@@ -11,6 +11,9 @@ development/
 # VSCode
 .vscode/
 
+# OSX
+.DS_Store
+
 # Distribution / packaging
 .Python
 build/

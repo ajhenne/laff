@@ -3,7 +3,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import logging
 import warnings
+
 import emcee
+# do I need emcee in this main module?
 
 # Ignore warnings.
 warnings.filterwarnings("ignore", category=RuntimeWarning)
