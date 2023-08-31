@@ -3,9 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import logging
 import warnings
-
 import emcee
-# do I need emcee in this main module?
 
 # Ignore warnings.
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -17,7 +15,7 @@ from .utility import check_data_input
 #################################################################################
 
 logger = logging.getLogger('laff')
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 handler = logging.StreamHandler()
 formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 handler.setFormatter(formatter)
@@ -58,6 +56,9 @@ def findFlares(data):
     starts, peaks, ends = possible_flares(data) # Find possible flares.
 
     # Perform some checks to ensure the found flares are valid.
+
+    all_start, all_peak, all_end = [], [], []
+
     flare_start, flare_peak, flare_end = [], [], []
     for start, peak, end in zip(starts, peaks, ends):
         check1 = _check_AverageNoise(data, start, peak, end)
@@ -65,17 +66,34 @@ def findFlares(data):
         check3 = _check_PulseShape(data, start, peak, end)
         check4 = _check_AboveContinuum(data, start, peak, end)
         logger.debug(f"Flare {round(data['time'].iloc[start],1)}-{round(data['time'].iloc[end],1)}s checks: {check1}/{check2}/{check3}/{check4}")
-        if check1 and check2 and check3 and check4:
+        
+        logger.critical(f'{start}/{peak}/{end} : {check1} / {check2} / [{check3}] / {check4}')
+        if check1 and check2 and check4:
+        # if check1 and check2 and check3 and check4:
             flare_start.append(int(start))
             flare_peak.append(int(peak))
             flare_end.append(int(end))
 
-    logger.info(f"Flare finder found {len(flare_start)} flares.")
+        all_start.append(int(start))
+        all_peak.append(int(peak))
+        all_end.append(int(end))
+
+        global all_flares
+        all_flares = [all_start, all_peak, all_end] if len(all_start) else False
+
+        ## TEMP ##
+        # else:
+        #     flare_start.append(int(start))
+        #     flare_peak.append(int(peak))
+        #     flare_end.append(int(end))
+        ##########
+
+    logger.info(f"Flare finder found {len(flare_start)} flare(s).")
     return [flare_start, flare_peak, flare_end] if len(flare_start) else False
 
 #################################################################################
 ### CONTINUUM FITTING
-#################################################################################
+#######################################################noteb##########################
 
 def fitContinuum(data, flare_indices, use_odr=False):
     logger.debug(f"Starting fitContinuum")
@@ -84,7 +102,7 @@ def fitContinuum(data, flare_indices, use_odr=False):
 
     # Remove flare data.
     if flare_indices:
-        logger.critical(f"{flare_indices}")
+        # logger.critical(f"{flare_indices}")
         for start, end in zip(reversed(flare_indices[0]), reversed(flare_indices[2])):
             data = data.drop(index=range(start, end))
 
@@ -184,8 +202,15 @@ def plotGRB(data, flare_indices=None, continuum=None, flares=None):
     max, min = np.log10(data['time'].iloc[0]), np.log10(data['time'].iloc[-1])
     constant_range = np.logspace(min, max, num=5000)
 
+    ### TEMP ###
+    for start, peak, end in zip(*all_flares):
+        plt.axvspan(xmin=data['time'].iloc[start], xmax=data['time'].iloc[end], alpha=0.25, color='orange')
+    ############
+
     if flare_indices:
         for start, peak, end in zip(*flare_indices):
+            logger.critical(f"{start}/{end}")
+            logger.critical(f"{len(data.flux)}")
             flare_data.append(data.iloc[start:end+1])
             data_continuum = data_continuum.drop(data.index[start:end+1])
             # plt.axvspan(data.iloc[start].time, data.iloc[end].time, color='r', alpha=0.25)

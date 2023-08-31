@@ -5,10 +5,9 @@ logger = logging.getLogger('laff')
 
 def possible_flares(data):
     
-    
     # Find deviations, or possible flares.
     deviations = find_deviations(data)
-    logger.debug(f'{len(deviations)} deviations found.')
+    logger.debug(f'find_deviations() - found at: {deviations}')
 
     starts = find_minima(data, deviations) # Refine deviations by looking for local minima, or flare starts.
     logger.debug(f'{len(starts)} flare starts identified.')
@@ -16,11 +15,19 @@ def possible_flares(data):
     peaks = find_maxima(data, starts) # For each flare start, find the corresponding peak.
     starts, peaks = _remove_Duplicates(data, starts, peaks) # Combine any duplicate start/peaks.
 
+
     DECAYPAR = 3
     ends = _find_end(data, starts, peaks, DECAYPAR) # For each flare peak, find the corresponding flare end.
 
+    ### TEMP
+    for start, peak, end in zip(starts, peaks, ends):
+        logger.critical(f"{start} / {peak} / {end}")
+
+    # Double check starts and peaks.
+    starts, peaks, ends = fixShape(data, starts, peaks, ends)
+
     # Combine any overlapping flares.
-    starts, peaks, ends = combine_overlaps(data, starts, peaks, ends)
+    # starts, peaks, ends = combine_overlaps(data, starts, peaks, ends)
 
     return starts, peaks, ends
 
@@ -39,7 +46,6 @@ def find_deviations(data):
         if counter == 2:
             check = data.iloc[i+1].flux + (data.iloc[i+1].flux_perr * 1.5) > data.iloc[i-1].flux
             if check:
-                logger.debug(f'find_deviations(): dev found at {i-1} - {data.iloc[i-1].time}s')
                 deviations.append(i-1)
                 counter = 0
             else:
@@ -78,13 +84,15 @@ def find_maxima(data, starts):
     maxima = []
 
     for start_index in starts:
-
+        start_index += 1
+        
+        # If close to end of data.
         if abs(data.idxmax('index').time - start_index) < 30:
             startpoint = start_index
             endpoint   = data.idxmax('index').time - 1
 
         else:
-
+            # Keep going until next 'chunk' is higher on average.
             prev_chunk = data['flux'].iloc[start_index]
             next_chunk = np.average(data['flux'].loc[start_index:start_index+5])
             chunkcount = 1
@@ -93,19 +101,15 @@ def find_maxima(data, starts):
                 chunkcount += 1
                 prev_chunk = next_chunk
                 next_chunk = np.average(data['flux'].loc[start_index+(chunkcount*5):start_index+(chunkcount*5)+5])
-                logger.critical(f'prevchunk {prev_chunk} and nextchunk {next_chunk}')
-
-            logger.critical(f"nextchunkavg finally lower than original flux comparison at {chunkcount}")
 
             finalrange = (chunkcount + 1) * 5
-            logger.critical(f"final range is +{finalrange}")
 
             startpoint = start_index
             endpoint   = start_index + finalrange
 
         points = data.iloc[startpoint:endpoint]
         maximum = data[data.flux == max(points.flux)].index.values[0]
-        logger.debug(f"find_maxima() - for {start_index} peak found at {maximum}")
+        logger.debug(f"find_maxima() - for startidx {start_index-1}, peak found at {maximum}")
         maxima.append(maximum)
 
     return maxima
@@ -168,7 +172,7 @@ def _find_end(data, starts, peaks, DECAYPAR):
     """
     ends = []
 
-    for peak_index in peaks:
+    for start_index, peak_index in zip(starts, peaks):
 
         cond_count = 0
         current_index = peak_index
@@ -203,6 +207,9 @@ def _find_end(data, starts, peaks, DECAYPAR):
             elif cond1 and cond3:
                 cond_count += 0.5
 
+            if data['flux'].iloc[current_index] > 1.5 * data['flux'].iloc[start_index]:
+                cond_count = DECAYPAR - 0.5
+
         ends.append(current_index)
 
     return sorted(ends)
@@ -235,6 +242,32 @@ def combine_overlaps(data, starts, peaks, ends):
     combined_ends.append(current_end)
 
     return combined_starts, combined_peaks, combined_ends
+
+def fixShape(data, starts, peaks, ends):
+
+    if len(starts) == 0:
+        return [], [], []
+
+    adjusted_starts, adjusted_peaks = [], []
+
+    for startidx, peakidx, endidx in zip(starts, peaks, ends):
+        # Adjust start.
+        look_start = data.iloc[startidx:peakidx]
+        new_startidx = data[data.flux == min(look_start.flux)].index.values[0]
+        if new_startidx != startidx:
+            logger.debug(f"fixShape() - Shifted start {startidx} to {new_startidx}.")   
+        # Adjust peak.
+        look_peak = data.iloc[startidx:endidx]
+        new_peakidx = data[data.flux == max(look_peak.flux)].index.values[0]
+        if new_peakidx != peakidx:
+            logger.debug(f"fixShape() - Shifted peak {peakidx} to {new_peakidx}.")
+    
+        adjusted_starts.append(new_startidx)
+        adjusted_peaks.append(new_peakidx)
+    
+    return adjusted_starts, adjusted_peaks, ends
+
+### FLARE CHECKS ############################################################################
 
 def _check_FluxIncrease(data, startidx, peakidx):
     """Check the flare increase is greater than x2 the start error."""
