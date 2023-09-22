@@ -208,7 +208,10 @@ def _find_end(data, starts, peaks, DECAYPAR):
                 cond_count += 0.5
 
             if data['flux'].iloc[current_index] > 1.5 * data['flux'].iloc[start_index]:
-                cond_count = DECAYPAR - 0.5
+                if cond_count == 0:
+                    cond_count = 0
+                else:
+                    cond_count = DECAYPAR - 0.5
 
         ends.append(current_index)
 

@@ -27,6 +27,23 @@ logger.addHandler(handler)
 
 from .modelling import broken_powerlaw
 
+def sequential_findFlares(data):
+    logger.debug("Starting sequential_findFlares()")
+    check_data_input(data) # First check input format is good.
+
+    # Cutoff late data.
+    LATE_CUTOFF = True
+    data = data[data.time < 2000] if LATE_CUTOFF else data
+
+    from .flarefinding import findFlares
+
+    # Run flare finding.
+    flares = findFlares(data)
+    print('yes')
+    print(len(data.flux))
+
+    return flares
+
 def findFlares(data):
     """
     Find flares within a GRB lightcurve.
@@ -280,8 +297,6 @@ def plotGRB(data, flare_indices=None, continuum=None, flares=None):
         plt.plot(constant_range, total_model, color='tab:orange')
         upper_flux, lower_flux = data['flux'].max() * 10, data['flux'].min() * 0.1
         plt.ylim(lower_flux, upper_flux)
-        plt.title('test')
-
     plt.loglog()
     plt.show()
 

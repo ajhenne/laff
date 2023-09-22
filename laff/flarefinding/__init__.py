@@ -6,3 +6,7 @@ from .flarefinding import (
     _check_PulseShape,
     _check_AboveContinuum
     )
+
+from .sequential_flarefinding import (
+    findFlares
+)
