@@ -39,8 +39,6 @@ def sequential_findFlares(data):
 
     # Run flare finding.
     flares = findFlares(data)
-    print('yes')
-    print(len(data.flux))
 
     return flares
 
