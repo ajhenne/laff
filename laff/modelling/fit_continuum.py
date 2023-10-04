@@ -16,9 +16,6 @@ def broken_powerlaw(x, params):
         slopes = params['slopes']
         breaks = params['breaks']
         normal = params['normal']
-        print(slopes)
-        print(breaks)
-        print(normal)
     elif type(params) is np.ndarray or type(params) is list:
         nparam = len(params)
         n = int((nparam-2)/2)
@@ -34,7 +31,7 @@ def broken_powerlaw(x, params):
         try:
             mask.append(x > breaks[i])
         except:
-            print(i, 'too many?')
+            logger.critical(i, 'too many?') # what's this for again?
             pass
 
     if n >= 0:
@@ -171,7 +168,7 @@ def fit_continuum_mcmc(data, breaknum, init_param, init_err):
     fitted_par = list(map(lambda v: np.median(v), samples.T))
     fitted_err = list(map(lambda v: np.std(v), samples.T))
 
-    logger.info("Continuum complete.")
+    logger.info("Continuum fitting complete.")
 
     return fitted_par, fitted_err
 

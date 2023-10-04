@@ -187,8 +187,6 @@ def plotGRB(data, flare_indices=None, continuum=None, flares=None):
 
     if flare_indices:
         for start, peak, end in flare_indices:
-            logger.critical(f"{start}/{end}")
-            logger.critical(f"{len(data.flux)}")
             flare_data.append(data.iloc[start:end+1])
             data_continuum = data_continuum.drop(data.index[start:end+1])
             # plt.axvspan(data.iloc[start].time, data.iloc[end].time, color='r', alpha=0.25)

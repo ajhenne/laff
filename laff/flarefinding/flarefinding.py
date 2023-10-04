@@ -31,9 +31,6 @@ def findFlares(data) -> list:
             peak_point = find_peak(data, start_point)
 
             if check_rise(data, start_point, peak_point):
-
-                logger.critical(f'{start_point, peak_point} // prev at {prev_decay}')
-
                 decay_point = find_decay(data, peak_point)
 
                 checks = [check_noise(data, start_point, peak_point, decay_point),
@@ -44,7 +41,6 @@ def findFlares(data) -> list:
                     FLARES.append([start_point, peak_point, decay_point])
                     n = decay_point + 1
                     prev_decay = decay_point
-                    logger.critical(f"flare: {start_point, peak_point, decay_point}")
                     continue
             else:
                 # Check failed.
@@ -66,8 +62,6 @@ def find_start(data: pd.DataFrame, start: int, prev_decay: int) -> int:
         points = data.iloc[start-3:start+1]
     minimum = data[data.flux == min(points.flux)].index.values[0]
     minimum = (minimum + 1) if (minimum <= prev_decay) else minimum
-    # print('prev start is ', prev_decay)
-    # print('minimum is ', minimum)
     logger.debug(f"Flare start found at {minimum}")
 
     return minimum
