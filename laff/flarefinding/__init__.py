@@ -1,0 +1,1 @@
+from .flarefinding import findFlares

@@ -1,10 +1,2 @@
-### LAFF ###
-__version__ = "0.6.11"
-
-# from .laff import (
-#     testfunction as tf,
-# )
-
-from .laff_settings import (
-    use_flare_model,
-)
+from .laff import findFlares, fitContinuum, fitFlares, fitGRB, plotGRB
+from .lightcurve_import import lcimport
