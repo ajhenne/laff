@@ -26,7 +26,7 @@ from .utility import check_data_input
 #################################################################################
 
 logger = logging.getLogger('laff')
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 handler = logging.StreamHandler()
 formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 handler.setFormatter(formatter)
@@ -110,7 +110,11 @@ def fitContinuum(data, flare_indices, use_odr=False):
     normal = final_par[-1]
     normal_err = final_err[-1]
 
-    return {'break_num': break_number, 'slopes': slopes, 'slopes_err': slopes_err, 'breaks': breaks, 'breaks_err': breaks_err, 'normal': [normal, normal_err],
+    return {'parameters': {
+                'break_num': break_number,
+                'slopes': slopes, 'slopes_err': slopes_err,
+                'breaks': breaks, 'breaks_err': breaks_err,
+                'normal': normal, 'normal_err': normal_err},
             'fit_statistics': final_fit_statistics}
 
 #################################################################################
@@ -161,7 +165,9 @@ def fitGRB(data, flare_indices=None, continuum=None, flares=None):
         logger.debug(f"Flare models not provided - running fitFlares function.")
         flares = fitFlares(data, flare_indices, continuum)
 
-    return flare_indices, continuum, flares
+    logger.info(f"LAFF run finished.")
+
+    return {'flares': flares, 'continuum': continuum}
 
 #################################################################################
 ### PLOTTING

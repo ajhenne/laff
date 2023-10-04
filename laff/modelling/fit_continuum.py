@@ -11,13 +11,23 @@ logger = logging.getLogger('laff')
 def broken_powerlaw(x, params):
     x = np.array(x)
 
-    nparam = len(params)
-    n = int((nparam-2)/2)
-
-    slopes = params[:n+1]
-    breaks = params[n+1:-1]
-    normal = params[-1]
-
+    if type(params) is dict:
+        n = params['break_num']
+        slopes = params['slopes']
+        breaks = params['breaks']
+        normal = params['normal']
+        print(slopes)
+        print(breaks)
+        print(normal)
+    elif type(params) is np.ndarray or type(params) is list:
+        nparam = len(params)
+        n = int((nparam-2)/2)
+        slopes = params[:n+1]
+        breaks = params[n+1:-1]
+        normal = params[-1]
+    else:
+        logger.critical("Unknown type found.")
+        raise UnboundLocalError(f'Param input function likely the culprit here, recieved type: {type(params)}')
     mask = []
 
     for i in range(n):
