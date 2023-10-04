@@ -11,6 +11,16 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 from .utility import check_data_input
 
+
+# findFlares() -- locate the indices of flares in the lightcurve
+# fitContinuum(flare_indices) -- use the indices to exclude data, then fit the continuum
+# fitFlares(flares, continuum) -- use indices + continuum to fit the flares
+
+# fitGRB() -- runs all 3 function in sequence, then does some final cleanups
+#          -- final statistics of the whole fit
+#          -- this is what the user should be running
+#          -- outputs a dictionary with all useful statistics
+
 #################################################################################
 ### LOGGER
 #################################################################################
@@ -42,7 +52,6 @@ def findFlares(data):
     flares = findFlares(data)
 
     logger.info(f"Found {len(flares)} flare(s).")
-
     return flares if len(flares) else False
 
 #################################################################################
@@ -94,7 +103,15 @@ def fitContinuum(data, flare_indices, use_odr=False):
         else:
             logger.debug("ODR better than MCMC fit, but not significantly enough.")
 
-    return {'parameters': final_par, 'errors': final_err, 'fit_statistics': final_fit_statistics}
+    slopes = final_par[:break_number+1]
+    slopes_err = final_err[:break_number+1]
+    breaks = final_par[break_number+1:-1]
+    breaks_err = final_err[break_number+1:-1]
+    normal = final_par[-1]
+    normal_err = final_err[-1]
+
+    return {'break_num': break_number, 'slopes': slopes, 'slopes_err': slopes_err, 'breaks': breaks, 'breaks_err': breaks_err, 'normal': [normal, normal_err],
+            'fit_statistics': final_fit_statistics}
 
 #################################################################################
 ### FIT FLARES
@@ -114,7 +131,13 @@ def fitFlares(data, flares, continuum):
     # Fit each flare.
     flare_fits, flare_errs = flare_fitter(data, data_subtracted, flares)
 
-    return {'parameters': flare_fits, 'errors': flare_errs}
+    ### TODO Calculate fluence.
+
+    fittedFlares = []
+    for indices, par, err in zip(flares, flare_fits, flare_errs):
+        fittedFlares.append({'times': [data.iloc[x].time for x in indices], 'par': par, 'par_err': err})
+
+    return fittedFlares
 
 #################################################################################
 ### FIT WHOLE GRB
