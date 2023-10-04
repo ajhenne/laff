@@ -61,7 +61,8 @@ def flare_fitter(data, residual, flares, use_odr=False):
 
         data_flare = data.copy()
         data_flare['flux'] = 0
-        data_flare['flux'].iloc[start:end] = residual['flux'].iloc[start:end]
+        # data_flare['flux'].iloc[start:end] = residual['flux'].iloc[start:end]
+        data_flare.loc[start:end, 'flux'] = residual.loc[start:end, 'flux']
         # Parameter estimates.
         t_peak = residual['time'].iloc[peak]
         t_start = residual['time'].iloc[start]
@@ -111,6 +112,7 @@ def flare_fitter(data, residual, flares, use_odr=False):
         flareFits.append(final_par)
         flareErrs.append(final_err)
 
+    logger.info("Flare fitting complete for all flares.")
     return flareFits, flareErrs
 
 def odr_fitter(data, inputpar):
