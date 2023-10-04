@@ -4,8 +4,8 @@ import pandas as pd
 
 logger = logging.getLogger('laff')
 
-def findFlares(data) -> list:
-    logger.debug("Starting findFlares()")
+def sequential_findflares(data) -> list:
+    logger.debug("Starting sequential_findflares()")
 
     final_index = len(data.flux) - 2
     n = 0
@@ -189,4 +189,4 @@ def check_above(data: pd.DataFrame, start: int, decay: int) -> bool:
     num_points = len(data['flux'].iloc[start:decay])
 
     logger.debug(f"points above/num_points => {points_above}/{num_points} = {points_above/num_points}")
-    return True if points_above > num_points/2 else False
+    return True if points_above/num_points >= 0.7 else False

@@ -1,1 +1,1 @@
-from .flarefinding import findFlares
+from .flarefinding import sequential_findflares
