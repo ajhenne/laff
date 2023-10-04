@@ -4,7 +4,7 @@ from ..utility import calculate_fit_statistics
 
 logger = logging.getLogger('laff')
 
-### run and i get initial set crap
+PAR_NAMES_FLARE = ['t_start', 'rise', 'decay', 'amplitude']
 
 #################################################################################
 ### FRED MODEL
