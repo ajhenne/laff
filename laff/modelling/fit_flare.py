@@ -11,7 +11,6 @@ logger = logging.getLogger('laff')
 
 def fred_flare(x, params):
     x = np.array(x)
-
     t_start = params[0]
     rise = params[1]
     decay = params[2]
@@ -59,7 +58,6 @@ def flare_fitter(data, residual, flares, use_odr=False):
 
         data_flare = data.copy()
         data_flare['flux'] = 0
-        # data_flare['flux'].iloc[start:end] = residual['flux'].iloc[start:end]
         data_flare.loc[start:end, 'flux'] = residual.loc[start:end, 'flux']
         # Parameter estimates.
         t_peak = residual['time'].iloc[peak]
@@ -107,8 +105,8 @@ def flare_fitter(data, residual, flares, use_odr=False):
 
         logger.debug("Flare complete")
 
-        flareFits.append(final_par)
-        flareErrs.append(final_err)
+        flareFits.append(list(final_par))
+        flareErrs.append(list(final_err))
 
     logger.info("Flare fitting complete for all flares.")
     return flareFits, flareErrs

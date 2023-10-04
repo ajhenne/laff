@@ -23,8 +23,8 @@ def broken_powerlaw(x, params):
         breaks = params[n+1:-1]
         normal = params[-1]
     else:
-        logger.critical("Unknown type found.")
-        raise UnboundLocalError(f'Param input function likely the culprit here, recieved type: {type(params)}')
+        logger.critical("Input parameter is not correct type!")
+        raise TypeError(f'params is not dict/list -> {type(params)}')
     mask = []
 
     for i in range(n):
