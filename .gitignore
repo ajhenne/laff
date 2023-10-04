@@ -1,3 +1,6 @@
+# Doom emacs config
+.dir-locals.el
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

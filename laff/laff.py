@@ -3,9 +3,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import logging
 import warnings
-import emcee
 
 # Ignore warnings.
+# from pandas.core.common import SettingWithCopyWarning
+# warnings.simplefilter(action='ignore', category=SettingWithCopyWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 from .utility import check_data_input
@@ -28,72 +29,25 @@ logger.addHandler(handler)
 from .modelling import broken_powerlaw
 
 def findFlares(data):
-    """
-    Find flares within a GRB lightcurve.
-
-    Longer description.
-    
-    [Parameters]
-        data
-            A pandas table containing the light curve data. Columns named [time,
-            time_perr, time_nerr, flux, flux_perr, flux_nerr].
-            
-    [Returns]
-        flares
-            A nested list of flare start, stop, end indices.
-    """
-    logger.debug("Starting findFlares")
-
-    # Check data is correct input format.
-    check_data_input(data)
+    logger.debug("Starting sequential_findFlares()")
+    check_data_input(data) # First check input format is good.
 
     # Cutoff late data.
     LATE_CUTOFF = True
     data = data[data.time < 2000] if LATE_CUTOFF else data
 
-    from .flarefinding import possible_flares, _check_AverageNoise, _check_FluxIncrease, _check_PulseShape, _check_AboveContinuum
+    from .flarefinding import findFlares
 
-    starts, peaks, ends = possible_flares(data) # Find possible flares.
+    # Run flare finding.
+    flares = findFlares(data)
 
-    # Perform some checks to ensure the found flares are valid.
+    logger.info(f"Found {len(flares)} flare(s).")
 
-    all_start, all_peak, all_end = [], [], []
-
-    flare_start, flare_peak, flare_end = [], [], []
-    for start, peak, end in zip(starts, peaks, ends):
-        check1 = _check_AverageNoise(data, start, peak, end)
-        check2 = _check_FluxIncrease(data, start, peak)
-        check3 = _check_PulseShape(data, start, peak, end)
-        check4 = _check_AboveContinuum(data, start, peak, end)
-        logger.debug(f"Flare {round(data['time'].iloc[start],1)}-{round(data['time'].iloc[end],1)}s checks: {check1}/{check2}/{check3}/{check4}")
-        
-        logger.critical(f'{start}/{peak}/{end} : {check1} / {check2} / [{check3}] / {check4}')
-        if check1 and check2 and check4:
-        # if check1 and check2 and check3 and check4:
-            flare_start.append(int(start))
-            flare_peak.append(int(peak))
-            flare_end.append(int(end))
-
-        all_start.append(int(start))
-        all_peak.append(int(peak))
-        all_end.append(int(end))
-
-        global all_flares
-        all_flares = [all_start, all_peak, all_end] if len(all_start) else False
-
-        ## TEMP ##
-        # else:
-        #     flare_start.append(int(start))
-        #     flare_peak.append(int(peak))
-        #     flare_end.append(int(end))
-        ##########
-
-    logger.info(f"Flare finder found {len(flare_start)} flare(s).")
-    return [flare_start, flare_peak, flare_end] if len(flare_start) else False
+    return flares if len(flares) else False
 
 #################################################################################
 ### CONTINUUM FITTING
-#######################################################noteb##########################
+#################################################################################
 
 def fitContinuum(data, flare_indices, use_odr=False):
     logger.debug(f"Starting fitContinuum")
@@ -102,8 +56,8 @@ def fitContinuum(data, flare_indices, use_odr=False):
 
     # Remove flare data.
     if flare_indices:
-        # logger.critical(f"{flare_indices}")
-        for start, end in zip(reversed(flare_indices[0]), reversed(flare_indices[2])):
+
+        for start, peak, end in flare_indices:
             data = data.drop(index=range(start, end))
 
     # Use ODR & AIC to find best number of powerlaw breaks.
@@ -148,7 +102,7 @@ def fitContinuum(data, flare_indices, use_odr=False):
 
 def fitFlares(data, flares, continuum):
 
-    from .modelling import flare_fitter, fred_flare
+    from .modelling import flare_fitter
 
     if not flares:
         return False
@@ -191,7 +145,7 @@ def fitGRB(data, flare_indices=None, continuum=None, flares=None):
 #################################################################################
 
 def plotGRB(data, flare_indices=None, continuum=None, flares=None):
-    logger.debug(f"Starting plotGRB")
+    logger.info(f"Starting plotGRB")
     logger.debug(f"Input flares: {flare_indices}")
     logger.debug(f"Input continuum: {continuum}")
 
@@ -202,13 +156,8 @@ def plotGRB(data, flare_indices=None, continuum=None, flares=None):
     max, min = np.log10(data['time'].iloc[0]), np.log10(data['time'].iloc[-1])
     constant_range = np.logspace(min, max, num=5000)
 
-    ### TEMP ###
-    for start, peak, end in zip(*all_flares):
-        plt.axvspan(xmin=data['time'].iloc[start], xmax=data['time'].iloc[end], alpha=0.25, color='orange')
-    ############
-
     if flare_indices:
-        for start, peak, end in zip(*flare_indices):
+        for start, peak, end in flare_indices:
             logger.critical(f"{start}/{end}")
             logger.critical(f"{len(data.flux)}")
             flare_data.append(data.iloc[start:end+1])
@@ -280,8 +229,6 @@ def plotGRB(data, flare_indices=None, continuum=None, flares=None):
         plt.plot(constant_range, total_model, color='tab:orange')
         upper_flux, lower_flux = data['flux'].max() * 10, data['flux'].min() * 0.1
         plt.ylim(lower_flux, upper_flux)
-        plt.title('test')
-
     plt.loglog()
     plt.show()
 
