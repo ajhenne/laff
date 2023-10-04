@@ -25,12 +25,6 @@ def fred_flare(x, params):
     model = amplitude * np.sqrt(np.exp(2*(rise/decay))) * np.exp(-(rise/(x-t_start))-((x-t_start)/decay))
     model[np.where(cond)] = 0
 
-    # for idx, number in enumerate(model):
-    #     if np.isinf(number):
-    #         raise ValueError('Infinite value calculated in function fred.')
-    #     if np.isnan(number):
-    #         raise ValueError('NaN value calculcated in function fred.')
-
     return model
 
 def fred_flare_wrapper(params, x):
@@ -63,11 +57,10 @@ def flare_fitter(data, residual, flares, use_odr=False):
     flareFits = []
     flareErrs = []
 
-    for start, peak, end in zip(flares[0], flares[1], flares[2]):
+    for start, peak, end in flares:
 
         data_flare = data.copy()
         data_flare['flux'] = 0
-        logger.critical(f'{residual.iloc[start:end]}')
         data_flare['flux'].iloc[start:end] = residual['flux'].iloc[start:end]
         # Parameter estimates.
         t_peak = residual['time'].iloc[peak]
