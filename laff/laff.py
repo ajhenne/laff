@@ -39,17 +39,17 @@ logger.addHandler(handler)
 from .modelling import broken_powerlaw
 
 def findFlares(data):
-    logger.debug("Starting sequential_findFlares()")
+    logger.debug("Starting sequential_findflares()")
     check_data_input(data) # First check input format is good.
 
     # Cutoff late data.
     LATE_CUTOFF = True
     data = data[data.time < 2000] if LATE_CUTOFF else data
 
-    from .flarefinding import findFlares
+    from .flarefinding import sequential_findflares
 
     # Run flare finding.
-    flares = findFlares(data)
+    flares = sequential_findflares(data)
 
     logger.info(f"Found {len(flares)} flare(s).")
     return flares if len(flares) else False
@@ -139,7 +139,7 @@ def fitFlares(data, flares, continuum):
 
     fittedFlares = []
     for indices, par, err in zip(flares, flare_fits, flare_errs):
-        fittedFlares.append({'times': [data.iloc[x].time for x in indices], 'par': par, 'par_err': err})
+        fittedFlares.append({'times': [data.iloc[x].time for x in indices], 'indices': indices, 'par': par, 'par_err': err})
 
     return fittedFlares
 
@@ -173,89 +173,57 @@ def fitGRB(data, flare_indices=None, continuum=None, flares=None):
 ### PLOTTING
 #################################################################################
 
-def plotGRB(data, flare_indices=None, continuum=None, flares=None):
-    logger.info(f"Starting plotGRB")
-    logger.debug(f"Input flares: {flare_indices}")
-    logger.debug(f"Input continuum: {continuum}")
+def plotGRB(data, fitted_grb):
+    logger.info(f"Starting plotGRB.")
 
-    data_continuum = data.copy()
-    flare_data = []
+    # Plot lightcurve.
+    logger.debug("Plotting lightcurve.")
+    plt.errorbar(data.time, data.flux,
+                xerr=[-data.time_nerr, data.time_perr], \
+                yerr=[-data.flux_nerr, data.flux_perr], \
+                marker='', linestyle='None', capsize=0, zorder=1)
 
     # For smooth plotting of fitted functions.
     max, min = np.log10(data['time'].iloc[0]), np.log10(data['time'].iloc[-1])
     constant_range = np.logspace(min, max, num=5000)
 
-    if flare_indices:
-        for start, peak, end in flare_indices:
-            flare_data.append(data.iloc[start:end+1])
-            data_continuum = data_continuum.drop(data.index[start:end+1])
-            # plt.axvspan(data.iloc[start].time, data.iloc[end].time, color='r', alpha=0.25)
-        flare_data = pd.concat(flare_data)
-        plt.errorbar(flare_data.time, flare_data.flux,
-            xerr=[-flare_data.time_nerr, flare_data.time_perr], \
-            yerr=[-flare_data.flux_nerr, flare_data.flux_perr], \
-            marker='', linestyle='None', capsize=0, color='r')
+    # Plot continuum model.
+    logger.debug('Plotting continuum model.')
+    fittedContinuum = broken_powerlaw(constant_range, fitted_grb['continuum']['parameters'])
+    total_model = fittedContinuum
+    plt.plot(constant_range, fittedContinuum, color='c')
 
-    # Plot lightcurve.
-    plt.errorbar(data_continuum.time, data_continuum.flux,
-    xerr=[-data_continuum.time_nerr, data_continuum.time_perr], \
-    yerr=[-data_continuum.flux_nerr, data_continuum.flux_perr], \
-    marker='', linestyle='None', capsize=0)
+    # Overlay marked flares.
+    if fitted_grb['flares'] is not False:
+        logger.debug("Plotting flare indices and models.")
 
-    if continuum:
-        if flare_indices is None:
-            raise ValueError("Cannot input a continuum without flare indices.")
+        for flare in fitted_grb['flares']:
+            
+            # Plot flare data.
+            flare_data = data.iloc[flare['indices'][0]:flare['indices'][2]]
+            plt.errorbar(flare_data.time, flare_data.flux,
+                        xerr=[-flare_data.time_nerr, flare_data.time_perr], \
+                        yerr=[-flare_data.flux_nerr, flare_data.flux_perr], \
+                        marker='', linestyle='None', capsize=0, color='r', zorder=2)
 
-        modelpar, modelerr = continuum['parameters'], continuum['errors']
+            # Plot flare models.
+            from .modelling import fred_flare
+            flare_model = fred_flare(constant_range, flare['par'])
+            total_model += flare_model
+            plt.plot(constant_range, fred_flare(constant_range, flare['par']), color='tab:green', linewidth=0.6, zorder=3)
 
-        nparam = len(modelpar)
-        n = int((nparam-2)/2)
+    # Plot total model.
+    logger.debug('Plotting total model.')
+    plt.plot(constant_range, total_model, color='tab:orange', zorder=5)
+    upper_flux, lower_flux = data['flux'].max() * 10, data['flux'].min() * 0.1
+    plt.ylim(lower_flux, upper_flux)
 
-        # Print continuum fits.
-        slopes = modelpar[:n+1]
-        slopes_Err = modelerr[:n+1]
-        slopes_info = [f"{slp:.2f} ({slp_err:.2f})" for slp, slp_err in zip(slopes, slopes_Err)]
-        breaks = modelpar[n+1:-1]
-        breaks_Err = modelerr[n+1:-1]
-        breaks_info = [f"{brk:.3g} ({brk_err:.3g})" for brk, brk_err in zip(breaks, breaks_Err)]
-        normal = modelpar[-1]
-        normal_Err = modelerr[-1]
-        normal_info = f"{normal:.2e} ({normal_Err:.2e})"
+    # Plot powerlaw breaks.
+    logger.debug('Plotting powerlaw breaks.')
+    for x_pos in fitted_grb['continuum']['parameters']['breaks']:
+        plt.axvline(x=x_pos, color='grey', linestyle='--', linewidth=0.5, zorder=0)
 
-        logger.info("[ CONTINUUM PARAMETERS ]")
-        logger.info("Slopes: {}".format(', '.join(slopes_info)))
-        logger.info("Breaks: {}".format(', '.join(breaks_info)))
-        logger.info(f"Normal: {normal_info}")
-
-        # Plot continuum model.
-        fittedContinuum = broken_powerlaw(constant_range, modelpar)
-        total_model = fittedContinuum
-        plt.plot(constant_range, fittedContinuum, color='c')
-
-        # Plot powerlaw breaks.
-        for x_pos in breaks:
-            plt.axvline(x=x_pos, color='grey', linestyle='--', linewidth=0.5)
-
-    if flares:
-        if not flare_indices:
-            raise ValueError("Cannot input flares without flare_indices.")
-        if not continuum:
-            raise ValueError("Cannot input flares without continuum.")
-        
-        from .modelling import fred_flare
-
-        logger.info("[ FLARE PARAMETERS ] - t_start, rise, decay, amplitude")
-
-        for fit, err in zip(flares['parameters'], flares['errors']):
-            logger.info(f'Flare - {fit[0]:.2f} ({err[0]:.2f}) / {fit[1]:.2f} ({err[1]:.2f}) / {fit[2]:.2f} ({err[2]:.2f}) / {fit[3]:.2g} ({err[3]:.2g})')
-            flare = fred_flare(constant_range, fit)
-            total_model += flare # Add flare to total model.
-            plt.plot(constant_range, fred_flare(constant_range, fit), color='tab:green', linewidth=0.6) # Plot each flare.
-
-        # Plot total model.
-        plt.plot(constant_range, total_model, color='tab:orange')
-        upper_flux, lower_flux = data['flux'].max() * 10, data['flux'].min() * 0.1
-        plt.ylim(lower_flux, upper_flux)
+    logger.info("Plotting functions done, displaying...")
     plt.loglog()
     plt.show()
 
