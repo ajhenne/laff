@@ -37,8 +37,6 @@ logger.addHandler(handler)
 ### FIND FLARES
 #################################################################################
 
-
-
 def findFlares(data):
     logger.debug("Starting sequential_findflares()")
     check_data_input(data) # First check input format is good.
@@ -59,10 +57,8 @@ def findFlares(data):
 ### CONTINUUM FITTING
 #################################################################################
 
-def fitContinuum(data, flare_indices, count_ratio):
+def fitContinuum(data: pd.DataFrame, flare_indices: list, count_ratio: float) -> dict:
     logger.debug(f"Starting fitContinuum")
-
-    
 
     # Remove flare data.
     if flare_indices:
@@ -98,14 +94,16 @@ def fitContinuum(data, flare_indices, count_ratio):
         else:
             logger.debug("ODR better than MCMC fit, but not significantly enough.")
 
-    slopes = final_par[:break_number+1]
-    slopes_err = final_err[:break_number+1]
-    breaks = final_par[break_number+1:-1]
-    breaks_err = final_err[break_number+1:-1]
+    slopes = list(final_par[:break_number+1])
+    slopes_err = list(final_err[:break_number+1])
+    breaks = list(final_par[break_number+1:-1])
+    breaks_err = list(final_err[break_number+1:-1])
     normal = final_par[-1]
     normal_err = final_err[-1]
 
-    if (data.iloc[0].time < breaks[0]) and (breaks[-1] < data.iloc[-1].time):
+    if len(breaks) == 0:
+        breakpoints = [data.iloc[0].time, data.iloc[-1].time]
+    elif (data.iloc[0].time < breaks[0]) and (breaks[-1] < data.iloc[-1].time):
         breakpoints = [data.iloc[0].time, *breaks, data.iloc[-1].time]
     elif (data.iloc[0].time > breaks[0]):
         breakpoints = [data.iloc[0].time, *breaks[1:], data.iloc[-1].time]

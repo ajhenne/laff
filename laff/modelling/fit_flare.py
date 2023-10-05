@@ -18,7 +18,6 @@ def fred_flare(x, params):
 
     cond = x < t_start
 
-
     model = amplitude * np.sqrt(np.exp(2*(rise/decay))) * np.exp(-(rise/(x-t_start))-((x-t_start)/decay))
     model[np.where(cond)] = 0
 
@@ -58,7 +57,7 @@ def flare_fitter(data, residual, flares, use_odr=False):
 
         data_flare = data.copy()
         data_flare['flux'] = 0
-        data_flare.loc[start:end, 'flux'] = list(residual.loc[start:end, 'flux'])
+        data_flare.loc[start:end, 'flux'] = [float(x) for x in residual.loc[start:end, 'flux']]
         # Parameter estimates.
         t_peak = residual['time'].iloc[peak]
         t_start = residual['time'].iloc[start]
