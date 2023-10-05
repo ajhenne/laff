@@ -9,8 +9,9 @@ import warnings
 # warnings.simplefilter(action='ignore', category=SettingWithCopyWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-from .utility import check_data_input
-
+from .flarefinding import sequential_findflares
+from .modelling import find_intial_fit, fit_continuum_mcmc, flare_fitter, broken_powerlaw, fred_flare
+from .utility import check_data_input, calculate_fit_statistics, calculate_fluence
 
 # findFlares() -- locate the indices of flares in the lightcurve
 # fitContinuum(flare_indices) -- use the indices to exclude data, then fit the continuum
@@ -36,7 +37,7 @@ logger.addHandler(handler)
 ### FIND FLARES
 #################################################################################
 
-from .modelling import broken_powerlaw
+
 
 def findFlares(data):
     logger.debug("Starting sequential_findflares()")
@@ -46,7 +47,7 @@ def findFlares(data):
     LATE_CUTOFF = True
     data = data[data.time < 2000] if LATE_CUTOFF else data
 
-    from .flarefinding import sequential_findflares
+    
 
     # Run flare finding.
     flares = sequential_findflares(data)
@@ -58,44 +59,38 @@ def findFlares(data):
 ### CONTINUUM FITTING
 #################################################################################
 
-def fitContinuum(data, flare_indices, use_odr=False):
+def fitContinuum(data, flare_indices, count_ratio):
     logger.debug(f"Starting fitContinuum")
 
-    from .modelling import find_intial_fit, fit_continuum_mcmc
+    
 
     # Remove flare data.
     if flare_indices:
-
-        for start, peak, end in flare_indices:
+        for start, _, end in flare_indices:
             data = data.drop(index=range(start, end))
 
     # Use ODR & AIC to find best number of powerlaw breaks.
     initial_fit, initial_fit_err, initial_fit_stats = find_intial_fit(data)
     break_number = int((len(initial_fit-2)/2)-1)
 
-    # Run MCMC to refine fit.
-    if use_odr == True:
+    # Try an MCMC fitting run.
+    try:
+        final_par, final_err = fit_continuum_mcmc(data, break_number, initial_fit, initial_fit_err)
+    except ValueError:
         final_par, final_err = initial_fit, initial_fit_err
-        logger.debug("Forcing ODR, skipping MCMC fitting.")
-    else:
-        try:
-            final_par, final_err = fit_continuum_mcmc(data, break_number, initial_fit, initial_fit_err)
-        except ValueError:
-            final_par, final_err = initial_fit, initial_fit_err
-            logger.debug(f"MCMC failed, defaulting to ODR.")
+        logger.debug(f"MCMC failed, defaulting to ODR.")
 
-    from .utility import calculate_fit_statistics
+    # Calculate fit statistics.
     final_fit_statistics = calculate_fit_statistics(data, broken_powerlaw, final_par)
-
     odr_rchisq = initial_fit_stats['rchisq']
     mcmc_rchisq = final_fit_statistics['rchisq']
     logger.debug(f'ODR rchisq: {odr_rchisq}')
     logger.debug(f'MCMC rchisq: {mcmc_rchisq}')
 
+    # Compare MCMC and ODR fits.
     if mcmc_rchisq == 0 or mcmc_rchisq < 0.1 or mcmc_rchisq == np.inf or mcmc_rchisq == -np.inf:
         logger.debug('MCMC appears to be bad, using ODR fit.')
         final_par, final_err, final_fit_statistics = initial_fit, initial_fit_err, initial_fit_stats
-
     elif abs(odr_rchisq-1) < abs(mcmc_rchisq-1):
         if abs(odr_rchisq-1) < 1.3 * abs(mcmc_rchisq-1):
             logger.debug("ODR better than MCMC, using ODR fit.")
@@ -110,20 +105,30 @@ def fitContinuum(data, flare_indices, use_odr=False):
     normal = final_par[-1]
     normal_err = final_err[-1]
 
+    if (data.iloc[0].time < breaks[0]) and (breaks[-1] < data.iloc[-1].time):
+        breakpoints = [data.iloc[0].time, *breaks, data.iloc[-1].time]
+    elif (data.iloc[0].time > breaks[0]):
+        breakpoints = [data.iloc[0].time, *breaks[1:], data.iloc[-1].time]
+    elif (breaks[-1].time > data.iloc[-1].time):
+        breakpoints = [data.iloc[0].time, *breaks[:-1], data.iloc[-1].time]
+
+    continuum_fluence = np.sum([calculate_fluence(broken_powerlaw, final_par, breakpoints[i], breakpoints[i+1], count_ratio) for i in range(len(breakpoints)-1)])
+
     return {'parameters': {
                 'break_num': break_number,
                 'slopes': slopes, 'slopes_err': slopes_err,
                 'breaks': breaks, 'breaks_err': breaks_err,
                 'normal': normal, 'normal_err': normal_err},
+            'fluence': continuum_fluence,
             'fit_statistics': final_fit_statistics}
 
 #################################################################################
 ### FIT FLARES
 #################################################################################
 
-def fitFlares(data, flares, continuum):
+def fitFlares(data, flares, continuum, count_ratio):
 
-    from .modelling import flare_fitter
+    
 
     if not flares:
         return False
@@ -135,38 +140,30 @@ def fitFlares(data, flares, continuum):
     # Fit each flare.
     flare_fits, flare_errs = flare_fitter(data, data_subtracted, flares)
 
-    ### TODO Calculate fluence.
-
     fittedFlares = []
     for indices, par, err in zip(flares, flare_fits, flare_errs):
-        fittedFlares.append({'times': [data.iloc[x].time for x in indices], 'indices': indices, 'par': par, 'par_err': err})
+        times = [data.iloc[x].time for x in indices]
+        fluence_rise = calculate_fluence(fred_flare, par, times[0], times[1], count_ratio)
+        fluence_decay = calculate_fluence(fred_flare, par, times[1], times[2], count_ratio)
+        fluence_total = fluence_rise + fluence_decay
+
+        fittedFlares.append({'times': times, 'indices': indices, 'par': par, 'par_err': err, 'fluence': [fluence_total, fluence_rise, fluence_decay]})
 
     return fittedFlares
 
 #################################################################################
-### FIT WHOLE GRB
+### FIT GRB LIGHTCURVE
 #################################################################################
 
-def fitGRB(data, flare_indices=None, continuum=None, flares=None):
-
+def fitGRB(data, count_ratio=1):
+    logger.debug(f"Starting fitGRB")
     check_data_input(data)
 
-    logger.debug(f"Starting fitGRB")
-
-    if flare_indices is None:
-        logger.debug(f"Flares not provided - running findFlares function.")
-        flare_indices = findFlares(data)
-
-    if continuum is None:
-        logger.debug(f"Continuum not provided - running fitContinuum function.")
-        continuum = fitContinuum(data, flare_indices)
-
-    if flares is None:
-        logger.debug(f"Flare models not provided - running fitFlares function.")
-        flares = fitFlares(data, flare_indices, continuum)
+    flare_indices = findFlares(data) # Find flare deviations.
+    continuum = fitContinuum(data, flare_indices, count_ratio) # Fit continuum.
+    flares = fitFlares(data, flare_indices, continuum, count_ratio) # Fit flares.
 
     logger.info(f"LAFF run finished.")
-
     return {'flares': flares, 'continuum': continuum}
 
 #################################################################################
@@ -207,7 +204,6 @@ def plotGRB(data, fitted_grb):
                         marker='', linestyle='None', capsize=0, color='r', zorder=2)
 
             # Plot flare models.
-            from .modelling import fred_flare
             flare_model = fred_flare(constant_range, flare['par'])
             total_model += flare_model
             plt.plot(constant_range, fred_flare(constant_range, flare['par']), color='tab:green', linewidth=0.6, zorder=3)

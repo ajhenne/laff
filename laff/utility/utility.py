@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import scipy.integrate as integrate
 import logging
 
 logger = logging.getLogger('laff')
@@ -42,5 +43,14 @@ def check_data_input(data):
     logger.debug('Data input is good.')
 
     return
+
+def calculate_fluence(model, params, start, stop, count_flux_ratio):
+    """Given some model and range, calculate the fluence. Optional count/flux ratio, default 1."""
+
+    range = np.logspace(np.log10(start), np.log10(stop), num=2500)
+    fitted_model = model(range, params)
+    fluence = integrate.trapezoid(fitted_model, x=range) * count_flux_ratio
+    return fluence
+
 
     
