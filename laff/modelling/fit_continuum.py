@@ -27,7 +27,6 @@ def broken_powerlaw(x, params):
         logger.critical("Input parameter is not correct type!")
         raise TypeError(f'params is not dict/list -> {type(params)}')
     
-    
     mask = []
 
     for i in range(n):
@@ -117,7 +116,6 @@ def odr_fitter(data, inputpar):
             i += 1
             
     return output.beta, output.sd_beta
-        
 
 #################################################################################
 ### MCMC FITTING
