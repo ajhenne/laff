@@ -9,6 +9,7 @@ logger = logging.getLogger('laff')
 #################################################################################
 
 def broken_powerlaw(x, params):
+    
     x = np.array(x)
 
     if type(params) is dict:
@@ -25,6 +26,8 @@ def broken_powerlaw(x, params):
     else:
         logger.critical("Input parameter is not correct type!")
         raise TypeError(f'params is not dict/list -> {type(params)}')
+    
+    
     mask = []
 
     for i in range(n):
@@ -39,7 +42,6 @@ def broken_powerlaw(x, params):
     if n >= 1:
         model[np.where(mask[0])] = normal * (x[np.where(mask[0])]**(-slopes[1])) * (breaks[0]**(-slopes[0]+slopes[1]))
     if n >= 2:
-        mask[1] = np.array(mask[1])
         model[np.where(mask[1])] = normal * (x[np.where(mask[1])]**(-slopes[2])) * (breaks[0]**(-slopes[0]+slopes[1])) * (breaks[1]**(-slopes[1]+slopes[2]))
     if n >= 3:
         model[np.where(mask[2])] = normal * (x[np.where(mask[2])]**(-slopes[3])) * (breaks[0]**(-slopes[0]+slopes[1])) * (breaks[1]**(-slopes[1]+slopes[2])) * (breaks[2]**(-slopes[2]+slopes[3]))
@@ -51,8 +53,8 @@ def broken_powerlaw(x, params):
     return model
 
 def broken_powerlaw_wrapper(params, x):
+    """Wrapper function for broken_powerlaw - for ODR fitting."""
     return broken_powerlaw(x, params)
-
 
 #################################################################################
 ### SCIPY.ODR FITTING
