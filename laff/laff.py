@@ -128,8 +128,6 @@ def fitContinuum(data, flare_indices, count_ratio):
 
 def fitFlares(data, flares, continuum, count_ratio):
 
-    
-
     if not flares:
         return False
 

@@ -58,7 +58,7 @@ def flare_fitter(data, residual, flares, use_odr=False):
 
         data_flare = data.copy()
         data_flare['flux'] = 0
-        data_flare.loc[start:end, 'flux'] = residual.loc[start:end, 'flux']
+        data_flare.loc[start:end, 'flux'] = list(residual.loc[start:end, 'flux'])
         # Parameter estimates.
         t_peak = residual['time'].iloc[peak]
         t_start = residual['time'].iloc[start]
