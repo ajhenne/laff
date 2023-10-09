@@ -101,14 +101,16 @@ def fitContinuum(data: pd.DataFrame, flare_indices: list, count_ratio: float) ->
     normal = final_par[-1]
     normal_err = final_err[-1]
 
-    if len(breaks) == 0:
+    if break_number == 0:
         breakpoints = [data.iloc[0].time, data.iloc[-1].time]
     elif (data.iloc[0].time < breaks[0]) and (breaks[-1] < data.iloc[-1].time):
         breakpoints = [data.iloc[0].time, *breaks, data.iloc[-1].time]
     elif (data.iloc[0].time > breaks[0]):
         breakpoints = [data.iloc[0].time, *breaks[1:], data.iloc[-1].time]
-    elif (breaks[-1].time > data.iloc[-1].time):
+    elif (breaks[-1] > data.iloc[-1].time):
         breakpoints = [data.iloc[0].time, *breaks[:-1], data.iloc[-1].time]
+    else:
+        breakpoints = [data.iloc[0].time, *breaks[1:-1], data.iloc[-1].time]
 
     continuum_fluence = np.sum([calculate_fluence(broken_powerlaw, final_par, breakpoints[i], breakpoints[i+1], count_ratio) for i in range(len(breakpoints)-1)])
 
