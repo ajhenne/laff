@@ -26,12 +26,22 @@ from .utility import check_data_input, calculate_fit_statistics, calculate_fluen
 ### LOGGER
 #################################################################################
 
+logging_level = 'INFO'
 logger = logging.getLogger('laff')
-logger.setLevel(logging.INFO)
+logger.setLevel(logging_level)
 handler = logging.StreamHandler()
 formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 handler.setFormatter(formatter)
 logger.addHandler(handler)
+
+def set_logging_level(level):
+    if level.lower() in ['debug', 'info', 'warning', 'error', 'critical']:
+        logging_level = level.upper()
+        logger.setLevel(logging_level)
+    elif level.lower() == 'none':
+        logger.setLevel(60) # set to above all other levels
+    else:
+        raise ValueError("Invalid logging level. Please use DEBUG, INFO, WARNING, ERROR, CRITICAL or NONE.")
 
 #################################################################################
 ### FIND FLARES
