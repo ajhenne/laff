@@ -155,7 +155,10 @@ def fitFlares(data, flares, continuum, count_ratio):
         fluence_decay = calculate_fluence(fred_flare, par, times[1], times[2], count_ratio)
         fluence_total = fluence_rise + fluence_decay
 
-        fittedFlares.append({'times': times, 'indices': indices, 'par': par, 'par_err': err, 'fluence': [fluence_total, fluence_rise, fluence_decay]})
+        peak_flux = data.iloc[indices[1]].flux
+        peak_flux_err = data.iloc[indices[1]].flux_perr
+
+        fittedFlares.append({'times': times, 'indices': indices, 'par': par, 'par_err': err, 'fluence': [fluence_total, fluence_rise, fluence_decay], 'peak_flux': [peak_flux, peak_flux_err]})
 
     return fittedFlares
 
