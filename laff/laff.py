@@ -151,6 +151,9 @@ def fitFlares(data, flares, continuum, count_ratio):
     fittedFlares = []
     for indices, par, err in zip(flares, flare_fits, flare_errs):
         times = [data.iloc[x].time for x in indices]
+
+        times[2] = get_better_end_time(data, indices, par, continuum['parameters'])
+
         fluence_rise = calculate_fluence(fred_flare, par, times[0], times[1], count_ratio)
         fluence_decay = calculate_fluence(fred_flare, par, times[1], times[2], count_ratio)
         fluence_total = fluence_rise + fluence_decay
@@ -161,6 +164,30 @@ def fitFlares(data, flares, continuum, count_ratio):
         fittedFlares.append({'times': times, 'indices': indices, 'par': par, 'par_err': err, 'fluence': [fluence_total, fluence_rise, fluence_decay], 'peak_flux': [peak_flux, peak_flux_err]})
 
     return fittedFlares
+
+def get_better_end_time(data, indices, flare_par, powerlaw_model):
+
+    end_times = []
+    from intersect import intersection
+
+    start, peak, end = indices
+    tstart, rise, decay, amp = flare_par
+
+    peak_time = np.log10(data['time'].iloc[peak])
+    end_time = np.log10(data['time'].iloc[end+20])
+    time = np.logspace(peak_time, end_time, num=5000)
+
+    powerlaw = broken_powerlaw(time, powerlaw_model)
+    fred = amp * np.sqrt(np.exp(2*(rise/decay))) * np.exp(-(rise/(time-tstart))-((time-tstart)/decay)) + (powerlaw * 0.95)
+
+    x_intercept, y = intersection(time, powerlaw, time, fred)
+    # print(x, y)
+    # plt.plot(time, powerlaw)
+    # plt.plot(time, fred)
+    # plt.loglog()
+    # plt.show()
+
+    return float(x_intercept[0])
 
 #################################################################################
 ### FIT GRB LIGHTCURVE
