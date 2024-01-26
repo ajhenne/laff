@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 from .flarefinding import sequential_findflares
 from .modelling import find_intial_fit, fit_continuum_mcmc, flare_fitter, broken_powerlaw, fred_flare, improved_end_time
-from .utility import check_data_input, calculate_fit_statistics, calculate_fluence, to_flux, to_time
+from .utility import check_data_input, calculate_fit_statistics, calculate_fluence
 
 # findFlares() -- locate the indices of flares in the lightcurve
 # fitContinuum(flare_indices) -- use the indices to exclude data, then fit the continuum
