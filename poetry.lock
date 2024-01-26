@@ -803,6 +803,17 @@ docs = ["furo", "jaraco.packaging (>=9.3)", "jaraco.tidelift (>=1.4)", "rst.link
 testing = ["pytest (>=6)", "pytest-black (>=0.3.7)", "pytest-checkdocs (>=2.4)", "pytest-cov", "pytest-enabler (>=2.2)", "pytest-mypy (>=0.9.1)", "pytest-ruff", "zipp (>=3.17)"]
 
 [[package]]
+name = "intersect"
+version = "1.2"
+description = "Intersection Of two curves"
+optional = false
+python-versions = "*"
+files = [
+    {file = "intersect-1.2-py3-none-any.whl", hash = "sha256:100224450c273703c0921fd3fbe063b0685a607e866c2519d770eb7ac09e4159"},
+    {file = "intersect-1.2.tar.gz", hash = "sha256:94fea3f3740c8d25a5d578768be090897c407884a576ad4a17494bca6a10d7c5"},
+]
+
+[[package]]
 name = "ipykernel"
 version = "6.26.0"
 description = "IPython Kernel for Jupyter"
@@ -2900,4 +2911,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.9, <3.13"
-content-hash = "5893ee4550f2eee29422914720123581abccbae10e197fd8448a229aab228291"
+content-hash = "6289967c1237e813051239d3213d7cea7bfb9d0c65ff3033cc0affe1868b456e"

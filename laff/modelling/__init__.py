@@ -7,4 +7,5 @@ from .fit_continuum import (
 from .fit_flare import (
     fred_flare,
     flare_fitter,
+    improved_end_time
 )

@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import logging
 import warnings
+import math
+from intersect import intersection
 
 # Ignore warnings.
 # from pandas.core.common import SettingWithCopyWarning
@@ -10,8 +12,8 @@ import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 from .flarefinding import sequential_findflares
-from .modelling import find_intial_fit, fit_continuum_mcmc, flare_fitter, broken_powerlaw, fred_flare
-from .utility import check_data_input, calculate_fit_statistics, calculate_fluence
+from .modelling import find_intial_fit, fit_continuum_mcmc, flare_fitter, broken_powerlaw, fred_flare, improved_end_time
+from .utility import check_data_input, calculate_fit_statistics, calculate_fluence, to_flux, to_time
 
 # findFlares() -- locate the indices of flares in the lightcurve
 # fitContinuum(flare_indices) -- use the indices to exclude data, then fit the continuum
@@ -38,7 +40,9 @@ def set_logging_level(level):
     if level.lower() in ['debug', 'info', 'warning', 'error', 'critical']:
         logging_level = level.upper()
         logger.setLevel(logging_level)
-    elif level.lower() == 'none':
+    elif level.lower() in ['verbose']:
+        logger.setLevel('DEBUG')
+    elif level.lower() in ['none', 'quiet']:
         logger.setLevel(60) # set to above all other levels
     else:
         raise ValueError("Invalid logging level. Please use DEBUG, INFO, WARNING, ERROR, CRITICAL or NONE.")
@@ -54,8 +58,6 @@ def findFlares(data):
     # Cutoff late data.
     LATE_CUTOFF = True
     data = data[data.time < 2000] if LATE_CUTOFF else data
-
-    
 
     # Run flare finding.
     flares = sequential_findflares(data)
@@ -141,19 +143,16 @@ def fitFlares(data, flares, continuum, count_ratio):
     if not flares:
         return False
 
-    fitted_model = broken_powerlaw(data.time, continuum['parameters'])
-    data_subtracted = data.copy()
-    data_subtracted['flux'] = data.flux - fitted_model
-
     # Fit each flare.
-    flare_fits, flare_errs = flare_fitter(data, data_subtracted, flares)
+    flare_fits, flare_errs = flare_fitter(data, continuum, flares)
 
+    # Format into dictionary nicely.
     fittedFlares = []
     for indices, par, err in zip(flares, flare_fits, flare_errs):
+        # First run newly calculated end times.
+        indices[2], new_end_time = improved_end_time(data, indices, par, continuum['parameters'])
         times = [data.iloc[x].time for x in indices]
-
-        times[2] = get_better_end_time(data, indices, par, continuum['parameters'])
-
+        times[2] = new_end_time
         fluence_rise = calculate_fluence(fred_flare, par, times[0], times[1], count_ratio)
         fluence_decay = calculate_fluence(fred_flare, par, times[1], times[2], count_ratio)
         fluence_total = fluence_rise + fluence_decay
@@ -164,30 +163,6 @@ def fitFlares(data, flares, continuum, count_ratio):
         fittedFlares.append({'times': times, 'indices': indices, 'par': par, 'par_err': err, 'fluence': [fluence_total, fluence_rise, fluence_decay], 'peak_flux': [peak_flux, peak_flux_err]})
 
     return fittedFlares
-
-def get_better_end_time(data, indices, flare_par, powerlaw_model):
-
-    end_times = []
-    from intersect import intersection
-
-    start, peak, end = indices
-    tstart, rise, decay, amp = flare_par
-
-    peak_time = np.log10(data['time'].iloc[peak])
-    end_time = np.log10(data['time'].iloc[end+20])
-    time = np.logspace(peak_time, end_time, num=5000)
-
-    powerlaw = broken_powerlaw(time, powerlaw_model)
-    fred = amp * np.sqrt(np.exp(2*(rise/decay))) * np.exp(-(rise/(time-tstart))-((time-tstart)/decay)) + (powerlaw * 0.95)
-
-    x_intercept, y = intersection(time, powerlaw, time, fred)
-    # print(x, y)
-    # plt.plot(time, powerlaw)
-    # plt.plot(time, fred)
-    # plt.loglog()
-    # plt.show()
-
-    return float(x_intercept[0])
 
 #################################################################################
 ### FIT GRB LIGHTCURVE
@@ -249,8 +224,21 @@ def plotGRB(data, fitted_grb):
     # Plot total model.
     logger.debug('Plotting total model.')
     plt.plot(constant_range, total_model, color='tab:orange', zorder=5)
+
+    # Adjustments for ylims on a log graph.
     upper_flux, lower_flux = data['flux'].max() * 10, data['flux'].min() * 0.1
     plt.ylim(lower_flux, upper_flux)
+    
+    # Adjustments for xlims for a log graph.
+    # I'm probably missing an easy bit of math!
+    # If the value is too close i.e. log10(time) = 2.05, then subtracting 10**(2) is too much. So included an edge case.
+    lowest_time_val = data['time'].min() + data['time_nerr'].iloc[0]
+    lowest_time_val_power = 10 ** math.floor(np.log10(lowest_time_val))
+    lowest_time_val_power = lowest_time_val_power-1 if lowest_time_val_power - math.floor(lowest_time_val) < 0.2 else lowest_time_val_power
+    lower_time = lowest_time_val - lowest_time_val_power
+    highest_time_val = (data['time'].max() + data['time_perr'].iloc[len(data.time)-1])
+    upper_time = highest_time_val + 10**(math.floor(np.log10(highest_time_val)))
+    plt.xlim(lower_time, upper_time)
 
     # Plot powerlaw breaks.
     logger.debug('Plotting powerlaw breaks.')
@@ -260,5 +248,4 @@ def plotGRB(data, fitted_grb):
     logger.info("Plotting functions done, displaying...")
     plt.loglog()
     plt.show()
-
     return
