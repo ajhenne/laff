@@ -56,7 +56,7 @@ def findFlares(data):
     check_data_input(data) # First check input format is good.
 
     # Cutoff late data.
-    LATE_CUTOFF = True
+    LATE_CUTOFF = False
     data = data[data.time < 2000] if LATE_CUTOFF else data
 
     # Run flare finding.
