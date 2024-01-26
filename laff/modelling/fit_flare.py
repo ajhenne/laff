@@ -1,13 +1,15 @@
 import numpy as np
 import logging
+import emcee
+from intersect import intersection
 from ..utility import calculate_fit_statistics
+from ..modelling import broken_powerlaw
 
 logger = logging.getLogger('laff')
 
 #################################################################################
 ### FRED MODEL
 #################################################################################
-
 
 def fred_flare(x, params):
     x = np.array(x)
@@ -46,9 +48,20 @@ def all_flares(x, params):
 
 from scipy.odr import ODR, Model, RealData
 
-def flare_fitter(data, residual, flares, use_odr=False):
+def flare_fitter(data, continuum, flares, use_odr=False):
+    """ 
+    Flare fitting function. Takes already found flare indices and models them.
 
+    Also runs:
+      - 
+    
+    """
     logger.info("Fitting flares...")
+
+    logger.debug("Calculating residuals")    
+    fitted_model = broken_powerlaw(data.time, continuum['parameters'])
+    residuals = data.copy()
+    residuals['flux'] = data.flux - fitted_model
 
     flareFits = []
     flareErrs = []
@@ -57,13 +70,13 @@ def flare_fitter(data, residual, flares, use_odr=False):
 
         data_flare = data.copy()
         data_flare['flux'] = np.float64(0)
-        data_flare.loc[start:end, 'flux'] = residual.loc[start:end, 'flux']
+        data_flare.loc[start:end, 'flux'] = residuals.loc[start:end, 'flux']
         # Parameter estimates.
-        t_peak = residual['time'].iloc[peak]
-        t_start = residual['time'].iloc[start]
+        t_peak = residuals['time'].iloc[peak]
+        t_start = residuals['time'].iloc[start]
         rise = t_peak - t_start
-        decay = (residual['time'].iloc[end] - t_peak)
-        amplitude = abs(residual['flux'].iloc[peak] - residual['flux'].iloc[start])
+        decay = (residuals['time'].iloc[end] - t_peak)
+        amplitude = abs(residuals['flux'].iloc[peak] - residuals['flux'].iloc[start])
         input_par = [t_start, rise, decay, amplitude]
 
         # Perform fit.
@@ -95,12 +108,12 @@ def flare_fitter(data, residual, flares, use_odr=False):
             logger.debug(f'MCMC failed - using ODR fit.')
             final_par, final_err = fit_par, fit_err
 
-        logger.debug(f"MCMC Par: {final_par}")
-        logger.debug(f"MCMC Err: {final_err}")
+        logger.debug(f"Final par: {final_par}")
+        logger.debug(f"Final err: {final_err}")
 
         # Remove from residuals.
         fitted_flare = fred_flare(data.time, final_par)
-        residual['flux'] -= fitted_flare
+        residuals['flux'] -= fitted_flare
 
         logger.debug("Flare complete")
 
@@ -109,6 +122,83 @@ def flare_fitter(data, residual, flares, use_odr=False):
 
     logger.info("Flare fitting complete for all flares.")
     return flareFits, flareErrs
+
+
+def improved_end_time(data, flare_indices, flare_par, continuum_par):
+    """
+    Find the end of the flares based on flare converging to continuum.
+    
+    Calculate the value of the fitted continuum model to the flare+continuum
+    model for a series of values until the models converge. Since the FRED
+    model is asymptotic to 0, we apply 'factor' to the flare+continuum, an
+    small effective downshift.
+    
+    Parameters:
+    data (pd.DataFrame): GRB lightcurve data.
+    flare_indices (List[int]): a nested list of indices corresponding to flare
+                               start, stop and end times.
+    flare_par (List[float]): a list of the flare model parameters.
+    continuum_par (List[floart]): a list of the continuum model parameters.
+
+    Returns:
+    end_index (int): the newly found index for the end of the flare.
+    end_time (float): the newly found time for the end of the flare.
+    """
+
+    logger.debug(f"Running improved_end_time for flare: {flare_indices}.")
+    peak, end = flare_indices[1:]
+    factor = 0.99 # seems to be the most consistent value.
+
+    # Calculate value for each model at current flare end.
+    current_continuum = broken_powerlaw([data['time'].iloc[end]], continuum_par)[0]
+    current_flare = fred_flare([data['time'].iloc[end]], flare_par)[0]
+    current_flare += (current_continuum * factor)
+
+    # Loop until the flare+continuum model drops below the continuum.
+    extend = 0
+    while current_flare > current_continuum and end + extend < len(data.time):
+        extend += 1
+        logger.debug(f"Conditions not yet met -- extending to {extend}")
+        current_continuum = broken_powerlaw([data['time'].iloc[end+extend]], continuum_par)[0]
+        current_flare = fred_flare([data['time'].iloc[end+extend]], flare_par)[0]
+        current_flare += (current_continuum * factor)
+    end_index = end + extend
+    logger.debug(f"Conditions met! Calculating intercept.")
+    
+    # Calculate the intercept time.
+    search_time = np.logspace(
+        np.log10(data['time'].iloc[peak+1]), 
+        np.log10(data['time'].iloc[end+extend+1]),
+        num = 1000)
+    
+    continuum_model = broken_powerlaw(search_time, continuum_par)
+    flare_model = fred_flare(search_time, flare_par) + (continuum_model * factor)
+    end_time, _ = intersection(search_time, continuum_model, search_time, flare_model)
+
+    if len(end_time) > 1:
+        logger.warning("Multiple intercepts found for this burst - the flare \
+                       may be incorrect or modelled badly.")
+        end_time = end_time[-1]
+        # import matplotlib.pyplot as plt
+        # plt.plot(search_time, continuum_model, color='tab:orange')
+        # plt.plot(search_time, flare_model, color='r')
+        # plt.scatter(data.time, data.flux, color='b', marker='.')
+        # plt.loglog()
+        # plt.show()
+        # raise ValueError("It appears two intercepts were found!")
+        ## This can occur when the found flare isn't really a flare. Noisy data
+        ## etc will cause the flare to be modelled wrong, and so multiple
+        ## intersections happen. I can't think of a scenario otherwise? There
+        ## should only ever be 2, so just select the later one in this case.
+        ## Maybe I can remove this check with better flare finding?
+    logger.debug(f"Found new end information: index {end_index}, end_time {end_time}.")
+
+    return end_index, end_time
+
+
+#################################################################################
+### FITTING METHODS
+#################################################################################
 
 def odr_fitter(data, inputpar):
     data = RealData(data.time, data.flux, data.time_perr, data.flux_perr)  
@@ -125,12 +215,6 @@ def odr_fitter(data, inputpar):
             i += 1
 
     return output.beta, output.sd_beta
-
-#################################################################################
-### MCMC FITTING
-#################################################################################
-
-import emcee
 
 def fit_flare_mcmc(data, init_param, init_err):
 
@@ -177,7 +261,7 @@ def fl_log_likelihood(params, x, y, x_err, y_err):
     model = fred_flare(x, params)
     chisq = np.sum(( (y-model)**2) / ((y_err)**2)) 
     log_likelihood = -0.5 * np.sum(chisq + np.log(2 * np.pi * y_err**2))
-    return log_likelihood
+    return log_likelihood   
 
 def fl_log_prior(params, TIME_END):
 

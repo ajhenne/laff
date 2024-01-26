@@ -15,10 +15,9 @@ def sequential_findflares(data) -> list:
 
     while n < final_index:
 
-
-
         dev_start = n
         dev_count = 0
+        
         # Run deviation check.
 
         if data.iloc[n+1].flux > data.iloc[n].flux:
