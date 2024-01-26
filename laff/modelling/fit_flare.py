@@ -149,6 +149,10 @@ def improved_end_time(data, flare_indices, flare_par, continuum_par):
     peak, end = flare_indices[1:]
     factor = 0.99 # seems to be the most consistent value.
 
+    if end == len(data.time) - 1:
+        logger.debug("End of flare already at end of data. Returning original inputs.")
+        return end, data['time'].iloc[end]
+
     # Calculate value for each model at current flare end.
     current_continuum = broken_powerlaw([data['time'].iloc[end]], continuum_par)[0]
     current_flare = fred_flare([data['time'].iloc[end]], flare_par)[0]
@@ -156,7 +160,7 @@ def improved_end_time(data, flare_indices, flare_par, continuum_par):
 
     # Loop until the flare+continuum model drops below the continuum.
     extend = 0
-    while current_flare > current_continuum and end + extend < len(data.time):
+    while current_flare > current_continuum and end + extend < len(data.time) -1:
         extend += 1
         logger.debug(f"Conditions not yet met -- extending to {extend}")
         current_continuum = broken_powerlaw([data['time'].iloc[end+extend]], continuum_par)[0]
@@ -164,7 +168,7 @@ def improved_end_time(data, flare_indices, flare_par, continuum_par):
         current_flare += (current_continuum * factor)
     end_index = end + extend
     logger.debug(f"Conditions met! Calculating intercept.")
-    
+        
     # Calculate the intercept time.
     search_time = np.logspace(
         np.log10(data['time'].iloc[peak+1]), 
