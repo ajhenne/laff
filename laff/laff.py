@@ -53,7 +53,7 @@ def set_logging_level(level):
 
 def findFlares(data):
     logger.debug("Starting sequential_findflares()")
-    check_data_input(data) # First check input format is good.
+    data = check_data_input(data) # First check input format is good.
 
     # Cutoff late data.
     LATE_CUTOFF = False
@@ -170,7 +170,7 @@ def fitFlares(data, flares, continuum, count_ratio):
 
 def fitGRB(data, count_ratio=1):
     logger.debug(f"Starting fitGRB")
-    check_data_input(data)
+    data = check_data_input(data)
 
     flare_indices = findFlares(data) # Find flare deviations.
     continuum = fitContinuum(data, flare_indices, count_ratio) # Fit continuum.
