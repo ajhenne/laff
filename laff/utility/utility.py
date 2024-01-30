@@ -39,6 +39,8 @@ def check_data_input(data):
         data.columns = expected_columns
     else:
         raise ValueError(f"Expected dataframe with 4 or 6 columns - got {data.shape[1]}.")
+    
+    data = data.reset_index(drop=True)
 
     logger.debug('Data input is good.')
 
