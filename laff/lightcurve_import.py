@@ -36,12 +36,14 @@ def lcimport(filepath, format="online_archive"):
     return data
 
 
-def _swift_online_archive(data_filepath):
+def _swift_online_archive(data_filepath, incbad=False):
+    """Data obtained directly from the Swift Online Archives."""
     qdptable = []
     i = 0
 
     allowed_modes = ['WTSLEW', 'WT', 'WT_incbad', 'PC_incbad',
                     'batSNR5flux', 'xrtwtslewflux', 'xrtwtflux', 'xrtpcflux_incbad']
+    allowed_modes += 'xrtpcflux_nosys_incbad' if incbad == True else ''
     allowed_modes = [[item] for item in allowed_modes]
 
     # Import tables from qdp.
@@ -65,6 +67,7 @@ def _swift_online_archive(data_filepath):
     return data
 
 def _swift_python_query(data_filepath):
+    """Data obtained through the Swift python module."""
 
     qdptable = []
     i = 0
