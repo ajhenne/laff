@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "laff"
-version = "0.9.7"
+version = "0.9.8"
 description = "GRB lightcurve flare and continuum fitter."
 authors = ["Adam Hennessy <ah724@leicester.ac.uk>"]
 readme = "README.md"
@@ -12,7 +12,6 @@ matplotlib = "^3.7.1"
 scipy = "^1.10.1"
 pandas = "^2.0.1"
 astropy = "^5.2.2"
-lmfit = "^1.2.1"
 emcee = "^3.1.4"
 intersect = "^1.2"
 
