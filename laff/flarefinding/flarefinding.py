@@ -7,6 +7,11 @@ logger = logging.getLogger('laff')
 def sequential_findflares(data) -> list:
     logger.debug("Starting sequential_findflares()")
 
+    data_original = data.copy()
+
+    data['smoothed_flux'] = 10**(np.log10(data['flux']).rolling(window=2).mean())
+    data.at[0, 'smoothed_flux'] = data['flux'].iloc[0]
+
     final_index = len(data.flux) - 2
     n = 0
     prev_start, prev_decay = 0, 0
@@ -15,17 +20,18 @@ def sequential_findflares(data) -> list:
 
     while n < final_index:
 
+        logger.debug(f"Looking at index {n}")
+
         dev_start = n
         dev_count = 0
         
         # Run deviation check.
-
-        if data.iloc[n+1].flux > data.iloc[n].flux:
+        if data.iloc[n+1].smoothed_flux > data.iloc[n].smoothed_flux:
             dev_count = 1
             if n+dev_count+1 >= final_index:
                 n = final_index
                 continue
-            while data.iloc[n+dev_count+1].flux >= data.iloc[n+dev_count].flux:
+            while data.iloc[n+dev_count+1].smoothed_flux >= data.iloc[n+dev_count].smoothed_flux:
                 dev_count += 1
 
         if dev_count >= 2:
@@ -34,32 +40,38 @@ def sequential_findflares(data) -> list:
             start_point = find_start(data, dev_start, prev_decay)
             peak_point = find_peak(data, start_point)
 
+            logger.debug(f'Possible flare rise from {start_point}->{peak_point}')
+
             if check_rise(data, start_point, peak_point):
                 decay_point = find_decay(data, peak_point)
-
                 checks = [check_noise(data, start_point, peak_point, decay_point),
                           check_above(data, start_point, decay_point)]
                 logger.debug(f"Checks: {checks}")
 
                 if all(checks):
                     FLARES.append([start_point, peak_point, decay_point])
+                    logger.debug(f"Confirmed flare::  {start_point, peak_point, decay_point}")
                     n = decay_point + 1
                     prev_decay = decay_point
                     continue
+                else:
+                    # All checks failed.
+                    logger.debug("Flare failed passing all tests - discarding.")
             else:
                 # Check failed.
-                logger.debug(f"Deviation NOT passed check")
+                logger.debug(f"Deviations has NOT passed checks - discarding")
         else:
             # dev_count not greater than 2, move on.
             pass
 
         n += 1
 
+    # Reset data.
+    data = data_original.copy()
     return FLARES
 
 def find_start(data: pd.DataFrame, start: int, prev_decay: int) -> int:
     """Return flare start by looking for local minima."""
-
     if start < 3:
         points = data.iloc[0:3]
     else:
@@ -120,6 +132,8 @@ def find_decay(data: pd.DataFrame, peak: int) -> int:
     condition = 0
     decaypar = 3
 
+    logger.debug(f"Looking for decay")
+
     def calc_grad(data: pd.DataFrame, idx1: int, idx2: int) -> int:
         """Calculate gradient between first (idx1) and second (idx2) points."""
         deltaFlux = data.iloc[idx2].flux - data.iloc[idx1].flux
@@ -127,9 +141,7 @@ def find_decay(data: pd.DataFrame, peak: int) -> int:
         return deltaFlux/deltaTime
 
     while condition < decaypar:
-
         decay += 1
-        logger.debug(f'for flare {peak}') # ?
         if data.idxmax('index').time in [decay + i for i in range(-1,2)]:
             logger.debug(f"Reached end of data, automatically ending flare at {decay +1}")
             return data.idxmax('index').time
@@ -183,7 +195,7 @@ def check_noise(data: pd.DataFrame, start: int, peak: int, decay: int) -> bool:
 
 def check_above(data: pd.DataFrame, start: int, decay: int) -> bool:
     """Check the flare is above the (estimated) continuum."""
-    start = 1 if start == 0 else start # if start is first point, don't use n-1
+    start = 1 if start == 0 else start # if start is first point in data, don't use n-1
     decay = data.idxmax('index').time - 1 if decay == data.idxmax('index').time else decay
 
     slope = (data['flux'].iloc[decay+1] - data['flux'].iloc[start-1])/(data['time'].iloc[decay+1] - data['time'].iloc[start-1])
