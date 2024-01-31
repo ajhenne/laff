@@ -232,7 +232,7 @@ def plotGRB(data, fitted_grb):
     # Adjustments for xlims for a log graph.
     # I'm probably missing an easy bit of math!
     # If the value is too close i.e. log10(time) = 2.05, then subtracting 10**(2) is too much. So included an edge case.
-    lowest_time_val = data['time'].min() + data['time_nerr'].iloc[0]
+    lowest_time_val = data['time'].iloc[0] + data['time_nerr'].iloc[0]
     lowest_time_val_power = 10 ** math.floor(np.log10(lowest_time_val))
     lowest_time_val_power = lowest_time_val_power-1 if lowest_time_val_power - math.floor(lowest_time_val) < 0.2 else lowest_time_val_power
     lower_time = lowest_time_val - lowest_time_val_power

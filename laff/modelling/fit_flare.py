@@ -71,45 +71,53 @@ def flare_fitter(data, continuum, flares, use_odr=False):
         data_flare = data.copy()
         data_flare['flux'] = np.float64(0)
         data_flare.loc[start:end, 'flux'] = residuals.loc[start:end, 'flux']
+
         # Parameter estimates.
         t_peak = residuals['time'].iloc[peak]
         t_start = residuals['time'].iloc[start]
         rise = t_peak - t_start
-        decay = (residuals['time'].iloc[end] - t_peak)
-        amplitude = abs(residuals['flux'].iloc[peak] - residuals['flux'].iloc[start])
+        # decay = (residuals['time'].iloc[end] - t_peak)
+        decay = 2 * rise
+        # amplitude = abs(residuals['flux'].iloc[peak] - residuals['flux'].iloc[start])
+        amplitude = residuals['flux'].iloc[peak]
         input_par = [t_start, rise, decay, amplitude]
 
-        # Perform fit.
+        # Perform intial ODR fit.
         logger.debug(f"For flare indices {start}/{peak}/{end}:")
-        fit_par, fit_err = odr_fitter(data_flare, input_par)
-        fit_par = [abs(x) for x in fit_par]
-        odr_fit_par = calculate_fit_statistics(data, fred_flare, fit_par)
-        odr_rchisq = odr_fit_par['rchisq']
-        logger.debug(f"ODR Par: {fit_par}")
-        logger.debug(f"ODR Err: {fit_err}")
+        odr_par, odr_err = odr_fitter(data_flare, input_par)
+        odr_par = [abs(x) for x in odr_par]
+        odr_stats = calculate_fit_statistics(data, fred_flare, odr_par)
+        odr_rchisq = odr_stats['rchisq']
+        logger.debug(f"ODR Par: {odr_par}")
+        logger.debug(f"ODR Err: {odr_err}")
 
+        # Attempt mcmc fitting routine.
         try:
-            final_par, final_err = fit_flare_mcmc(data_flare, fit_par, fit_err)
-            final_fit_statistics = calculate_fit_statistics(data, fred_flare, final_par)
-            mcmc_rchisq = final_fit_statistics['rchisq']
+            mcmc_par, mcmc_err = fit_flare_mcmc(data_flare, odr_par, odr_err)
+            mcmc_stats = calculate_fit_statistics(data, fred_flare, mcmc_par)
+            mcmc_rchisq = mcmc_stats['rchisq']
+            logger.debug(f"MCMC Par: {mcmc_par}")
+            logger.debug(f"MCMC Err: {mcmc_err}")
 
+            # Check for bad MCMC.
             if mcmc_rchisq == 0 or mcmc_rchisq < 0.1 or mcmc_rchisq == np.inf or mcmc_rchisq == -np.inf:
                 logger.debug(f'MCMC appears to be bad, using ODR fit for flare {start}-{end}.')
-                final_par, final_err, final_fit_statistics = fit_par, fit_err, odr_fit_par
-
+                final_par, final_err, final_fit_statistics = odr_par, odr_err, odr_stats
+            # Compare the two models.
             elif abs(odr_rchisq-1) < abs(mcmc_rchisq-1):
                 if abs(odr_rchisq) < 1.3 * abs(mcmc_rchisq-1):
                     logger.debug(f"ODR better than MCMC for flare {start}-{end}, using ODR.")
-                    final_par, final_err, final_fit_statistics = fit_par, fit_err, odr_fit_par
+                    final_par, final_err, final_fit_statistics = odr_par, odr_err, odr_stats
                 else:
                     logger.debug(f"ODR better than MCMC fit for flare {start}-{end}, but not significantly enough.")
-
+            # Otherwise: mcmc.
+            else:
+                logger.debug("Using MCMC fit.")
+                final_par, final_err, final_fit_statistics = mcmc_par, mcmc_err, mcmc_stats
+            
         except ValueError:
             logger.debug(f'MCMC failed - using ODR fit.')
-            final_par, final_err = fit_par, fit_err
-
-        logger.debug(f"Final par: {final_par}")
-        logger.debug(f"Final err: {final_err}")
+            final_par, final_err = odr_par, odr_err
 
         # Remove from residuals.
         fitted_flare = fred_flare(data.time, final_par)
@@ -224,7 +232,7 @@ def fit_flare_mcmc(data, init_param, init_err):
 
     ndim = len(init_param)
     nwalkers = 30
-    nsteps = 200
+    nsteps = 300
 
     p0 = np.zeros((nwalkers, ndim))
 
@@ -250,7 +258,7 @@ def fit_flare_mcmc(data, init_param, init_err):
         args=(data.time, data.flux, data.time_perr, data.flux_perr))
     sampler.run_mcmc(p0, nsteps)
 
-    burnin = 25
+    burnin = 50
 
     samples = sampler.chain[:, burnin:, :].reshape(-1, ndim)
 

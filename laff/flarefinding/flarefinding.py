@@ -130,7 +130,7 @@ def find_decay(data: pd.DataFrame, peak: int) -> int:
     """
     decay = peak
     condition = 0
-    decaypar = 3
+    decaypar = 2
 
     logger.debug(f"Looking for decay")
 
@@ -161,8 +161,9 @@ def find_decay(data: pd.DataFrame, peak: int) -> int:
             condition += 1
         elif cond1 and cond3:
             condition += 0.5
-        # else:
-            # condition -= 0.5 if condition >= 0.5 else 0
+        else:
+            # condition = 0
+            condition -= 0.5 if condition >= 0.5 else 0
 
     logger.debug(f"Decay end found at {decay}")
 
@@ -194,15 +195,31 @@ def check_noise(data: pd.DataFrame, start: int, peak: int, decay: int) -> bool:
     # """Check the shape of the flare."""
 
 def check_above(data: pd.DataFrame, start: int, decay: int) -> bool:
-    """Check the flare is above the (estimated) continuum."""
-    start = 1 if start == 0 else start # if start is first point in data, don't use n-1
+    """
+    Check the flare is above the (estimated) continuum.
+    
+    We calculate the powerlaw continuum through the flare by solving a set of
+    power functions for (x, y) co-ordinates corresponding to the found flare
+    start and end times. The number of points above and below the slope can then
+    be found. If the fraction above the continuum is below 0.7, to allow some
+    variation through noise, we discard the flare.
+
+    """
+    # Check flare boundaries.
+    start = 1 if start == 0 else start
     decay = data.idxmax('index').time - 1 if decay == data.idxmax('index').time else decay
 
-    slope = (data['flux'].iloc[decay+1] - data['flux'].iloc[start-1])/(data['time'].iloc[decay+1] - data['time'].iloc[start-1])
-    intercept = data['flux'].iloc[start-1] - slope * data['time'].iloc[start-1]
+    x_coords = data['time'].iloc[start], data['time'].iloc[decay]
+    y_coords = data['flux'].iloc[start], data['flux'].iloc[decay]
 
-    points_above = sum(flux > (slope*time+intercept) for flux, time in zip(data['flux'].iloc[start:decay], data['time'].iloc[start:decay]))
+    ## Solving y = nx^a for start and stop.
+    alpha = np.emath.logn(x_coords[1]/x_coords[0], y_coords[1]/y_coords[0])
+    norm = y_coords[1] / x_coords[1] ** alpha
+    # logger.debug(f"ALPHA IS {alpha}")
+    # logger.debug(f"NORM IS {norm}")
+    
+    points_above = sum(flux > (norm*time**alpha) for flux, time in zip(data['flux'].iloc[start:decay], data['time'].iloc[start:decay]))
     num_points = len(data['flux'].iloc[start:decay])
 
     logger.debug(f"points above/num_points => {points_above}/{num_points} = {points_above/num_points}")
-    return True if points_above/num_points >= 0.7 else False
+    return True if points_above/num_points >= 0.65 else False
