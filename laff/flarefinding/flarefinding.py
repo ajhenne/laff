@@ -9,8 +9,10 @@ def sequential_findflares(data) -> list:
 
     data_original = data.copy()
 
-    data['smoothed_flux'] = 10**(np.log10(data['flux']).rolling(window=2).mean())
+    data['smoothed_flux'] = 10**(np.log10(data['flux']).rolling(window=3).mean())
     data.at[0, 'smoothed_flux'] = data['flux'].iloc[0]
+
+    data['smoothed_flux'] = data['flux']
 
     final_index = len(data.flux) - 2
     n = 0
