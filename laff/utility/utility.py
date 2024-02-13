@@ -51,7 +51,8 @@ def calculate_fluence(model, params, start, stop, count_flux_ratio):
 
     range = np.logspace(np.log10(start), np.log10(stop), num=2500)
     fitted_model = model(range, params)
-    fluence = integrate.trapezoid(fitted_model, x=range) * count_flux_ratio
+    fluence = integrate.trapezoid(fitted_model, x=range)
+
     return fluence
 
 
