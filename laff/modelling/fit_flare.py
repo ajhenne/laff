@@ -187,10 +187,16 @@ def improved_end_time(data, flare_indices, flare_par, continuum_par):
     flare_model = fred_flare(search_time, flare_par) + (continuum_model * factor)
     end_time, _ = intersection(search_time, continuum_model, search_time, flare_model)
 
-    if len(end_time) > 1:
+    # If no intersect found:
+    if len(end_time) == 0:
+        # print("NO TIME FOUND")
+        end_time = data['time'].iloc[end]
+
+    elif len(end_time) > 1:
         logger.warning("Multiple intercepts found for this burst - the flare \
                        may be incorrect or modelled badly.")
         end_time = end_time[-1]
+        # print("WEVE ENTERED GREATER THAN ONE")
         # import matplotlib.pyplot as plt
         # plt.plot(search_time, continuum_model, color='tab:orange')
         # plt.plot(search_time, flare_model, color='r')
@@ -203,8 +209,11 @@ def improved_end_time(data, flare_indices, flare_par, continuum_par):
         ## intersections happen. I can't think of a scenario otherwise? There
         ## should only ever be 2, so just select the later one in this case.
         ## Maybe I can remove this check with better flare finding?
+    else:
+        end_time = end_time[0]
+        # print("WEVE NOT NOT NOT")
     logger.debug(f"Found new end information: index {end_index}, end_time {end_time}.")
-
+    # print(end_time)
     return end_index, end_time
 
 
