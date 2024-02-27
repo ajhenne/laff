@@ -94,9 +94,12 @@ def find_intial_fit(data):
     logger.info(f"Initial continuum fit found {n} breaks.")
 
     logger.debug("ODR initial fit parameters.")
-    logger.debug(f'Slopes: {list(best_fit[:n+1])}')
-    logger.debug(f'Breaks: {list(best_fit[n+1:-1])}')
-    logger.debug(f'Normal: {best_fit[-1]}')
+    logger.debug(f'Slopes_par: {list(best_fit[:n+1])}')
+    logger.debug(f'Slopes_err: {list(best_err[:n+1])}')
+    logger.debug(f'Breaks_par: {list(best_fit[n+1:-1])}')
+    logger.debug(f'Breaks_err: {list(best_err[n+1:-1])}')
+    logger.debug(f'Normal_par: {best_fit[-1]}')
+    logger.debug(f'Normal_err: {best_err[-1]}')
 
     return best_fit, best_err, best_stats
 
