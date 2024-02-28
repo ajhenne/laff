@@ -69,7 +69,8 @@ def find_intial_fit(data):
 
         # Guess parameters.
         slope_guesses = [1.0] * (breaknum+1)
-        break_guesses = list(np.array(np.logspace(np.log10(data_start) * 1.1, np.log10(data_end) * 0.9, num=breaknum)))
+        break_guesses = list(np.array(np.logspace(np.log10(data_start), np.log10(data_end), num=breaknum+2)))[1:-1]
+        # break_guesses = list(np.array(np.logspace(np.log10(data_start) * 1.1, np.log10(data_end) * 0.9, num=breaknum+2)))
         normal_guess  = [data['flux'].iloc[0] * data['time'].iloc[0]]
         input_par = slope_guesses + break_guesses + normal_guess
 
@@ -86,7 +87,51 @@ def find_intial_fit(data):
 
         model_fits.append([fit_par, deltaAIC, fit_err, fit_stats])
 
-    # Obtain best fitted mdel.
+    ############################################################################
+    ## TEMP PLOT ALL MODELS
+        
+    # import matplotlib.pyplot as plt
+
+    # maxval, minval = np.log10(data['time'].iloc[0]), np.log10(data['time'].iloc[-1])
+    # constant_range = np.logspace(minval, maxval, num=5000)
+
+    # fig, axs = plt.subplots(6, sharex=True)
+
+    # for fit, ax in zip(model_fits, axs):
+
+    #     print('AIC')
+    #     print(fit[1])
+
+    #     fit = list(fit[0])
+    #     print('FIT HERE', fit)
+    #     ax.errorbar(data.time, data.flux,
+    #             xerr=[-data.time_nerr, data.time_perr], \
+    #             yerr=[-data.flux_nerr, data.flux_perr], \
+    #             marker='', linestyle='None', capsize=0, zorder=1, color='k')
+
+    #     fittedContinuum = broken_powerlaw(constant_range, fit)
+    #     ax.plot(constant_range, fittedContinuum, color='c')
+
+    #     n = int((len(fit)-2)/2)
+    #     print('n')
+    #     print(n)
+
+    #     print('fit n')
+
+    #     print(fit[n+1:-1])
+        
+    #     if n > 0:
+    #         for xpos in fit[n+1:-1]:
+    #             ax.axvline(x=xpos, color='grey', linestyle='--', linewidth=0.5, zorder=0)
+    #     # elif n == 1:
+    #         # ax.axvline(x=fit[n+1-1], color='grey', linestyle='--', linewidth=0.5, zorder=0)
+    
+    #     ax.loglog()
+    
+    # plt.show()
+
+    # ############################################################################
+
     best_fit, best_aic, best_err, best_stats = min(model_fits, key=lambda x: x[1])
 
     nparam = len(best_fit)
