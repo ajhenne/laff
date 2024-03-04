@@ -16,7 +16,6 @@ def plot_all_break_fits(data, model_fits, broken_powerlaw):
     fig, axs = plt.subplots(6, sharex=True, sharey=True)
     fig.subplots_adjust(hspace=0, left=0, bottom=0, right=1, top=1)
     
-
     for fit, ax in zip(model_fits, axs):
         fit = list(fit[0])
         ax.errorbar(data.time, data.flux,
@@ -33,9 +32,7 @@ def plot_all_break_fits(data, model_fits, broken_powerlaw):
             for xpos in fit[n+1:-1]:
                 ax.axvline(x=xpos, color='grey', linestyle='--', linewidth=0.5, zorder=0)
         ax.loglog()
-        # ax.set_xlabel("Time since BAT trigger")
-        # ax.set_ylabel("Flux")
-        # ax.set_xlim(data['time'].iloc[0], data['time'].iloc[-1])
+        
     plt.xlim(get_xlims(data))
     plt.margins(x=0, y=0)
     plt.show()
