@@ -20,6 +20,7 @@ def calculate_fit_statistics(data, model, params):
     r_chisq = chisq / dof
 
     deltaAIC = (2 * npar) + (n * np.log(r_chisq))
+    deltaAIC = deltaAIC if deltaAIC != -np.inf else np.inf # negative infinity check
         
     return {'chisq': chisq, 'rchisq': r_chisq, 'n': n, 'npar': npar, 'dof': dof, 'deltaAIC': deltaAIC}
 
