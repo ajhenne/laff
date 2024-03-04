@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 from .flarefinding import sequential_findflares
 from .modelling import find_intial_fit, fit_continuum_mcmc, flare_fitter, broken_powerlaw, fred_flare, improved_end_time
-from .utility import check_data_input, calculate_fit_statistics, calculate_fluence
+from .utility import check_data_input, calculate_fit_statistics, calculate_fluence, get_xlims
 
 # findFlares() -- locate the indices of flares in the lightcurve
 # fitContinuum(flare_indices) -- use the indices to exclude data, then fit the continuum
@@ -69,7 +69,7 @@ def findFlares(data):
 ### CONTINUUM FITTING
 #################################################################################
 
-def fitContinuum(data: pd.DataFrame, flare_indices: list, count_ratio: float) -> dict:
+def fitContinuum(data: pd.DataFrame, flare_indices: list, count_ratio: float, rich_output: bool) -> dict:
     logger.debug(f"Starting fitContinuum")
 
     # Remove flare data.
@@ -78,7 +78,7 @@ def fitContinuum(data: pd.DataFrame, flare_indices: list, count_ratio: float) ->
             data = data.drop(index=range(start, end))
 
     # Use ODR & AIC to find best number of powerlaw breaks.
-    initial_fit, initial_fit_err, initial_fit_stats = find_intial_fit(data)
+    initial_fit, initial_fit_err, initial_fit_stats = find_intial_fit(data, rich_output)
     break_number = int((len(initial_fit-2)/2)-1)
 
     # Try an MCMC fitting run.
@@ -168,12 +168,12 @@ def fitFlares(data, flares, continuum, count_ratio):
 ### FIT GRB LIGHTCURVE
 #################################################################################
 
-def fitGRB(data, count_ratio=1):
+def fitGRB(data, count_ratio=1, rich_output=False):
     logger.debug(f"Starting fitGRB")
     data = check_data_input(data)
 
     flare_indices = findFlares(data) # Find flare deviations.
-    continuum = fitContinuum(data, flare_indices, count_ratio) # Fit continuum.
+    continuum = fitContinuum(data, flare_indices, count_ratio, rich_output) # Fit continuum.
     flares = fitFlares(data, flare_indices, continuum, count_ratio) # Fit flares.
 
     logger.info(f"LAFF run finished.")
@@ -229,16 +229,7 @@ def plotGRB(data, fitted_grb):
     upper_flux, lower_flux = data['flux'].max() * 10, data['flux'].min() * 0.1
     plt.ylim(lower_flux, upper_flux)
     
-    # Adjustments for xlims for a log graph.
-    # I'm probably missing an easy bit of math!
-    # If the value is too close i.e. log10(time) = 2.05, then subtracting 10**(2) is too much. So included an edge case.
-    lowest_time_val = data['time'].iloc[0] + data['time_nerr'].iloc[0]
-    lowest_time_val_power = 10 ** math.floor(np.log10(lowest_time_val))
-    lowest_time_val_power = lowest_time_val_power-1 if lowest_time_val_power - math.floor(lowest_time_val) < 0.2 else lowest_time_val_power
-    lower_time = lowest_time_val - lowest_time_val_power
-    highest_time_val = (data['time'].max() + data['time_perr'].iloc[len(data.time)-1])
-    upper_time = highest_time_val + 10**(math.floor(np.log10(highest_time_val)))
-    plt.xlim(lower_time, upper_time)
+    plt.xlim(get_xlims(data))
 
     # Plot powerlaw breaks.
     logger.debug('Plotting powerlaw breaks.')

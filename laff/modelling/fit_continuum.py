@@ -2,6 +2,8 @@ import numpy as np
 import logging
 from ..utility import calculate_fit_statistics
 
+from ..utility import plot_all_break_fits
+
 logger = logging.getLogger('laff')
 
 #################################################################################
@@ -61,7 +63,7 @@ def broken_powerlaw_wrapper(params, x):
 
 from scipy.odr import ODR, Model, RealData
 
-def find_intial_fit(data):
+def find_intial_fit(data, rich_output):
     data_start, data_end = data['time'].iloc[0], data['time'].iloc[-1]
     model_fits = []
 
@@ -87,50 +89,8 @@ def find_intial_fit(data):
 
         model_fits.append([fit_par, deltaAIC, fit_err, fit_stats])
 
-    ############################################################################
-    ## TEMP PLOT ALL MODELS
-        
-    # import matplotlib.pyplot as plt
-
-    # maxval, minval = np.log10(data['time'].iloc[0]), np.log10(data['time'].iloc[-1])
-    # constant_range = np.logspace(minval, maxval, num=5000)
-
-    # fig, axs = plt.subplots(6, sharex=True)
-
-    # for fit, ax in zip(model_fits, axs):
-
-    #     print('AIC')
-    #     print(fit[1])
-
-    #     fit = list(fit[0])
-    #     print('FIT HERE', fit)
-    #     ax.errorbar(data.time, data.flux,
-    #             xerr=[-data.time_nerr, data.time_perr], \
-    #             yerr=[-data.flux_nerr, data.flux_perr], \
-    #             marker='', linestyle='None', capsize=0, zorder=1, color='k')
-
-    #     fittedContinuum = broken_powerlaw(constant_range, fit)
-    #     ax.plot(constant_range, fittedContinuum, color='c')
-
-    #     n = int((len(fit)-2)/2)
-    #     print('n')
-    #     print(n)
-
-    #     print('fit n')
-
-    #     print(fit[n+1:-1])
-        
-    #     if n > 0:
-    #         for xpos in fit[n+1:-1]:
-    #             ax.axvline(x=xpos, color='grey', linestyle='--', linewidth=0.5, zorder=0)
-    #     # elif n == 1:
-    #         # ax.axvline(x=fit[n+1-1], color='grey', linestyle='--', linewidth=0.5, zorder=0)
-    
-    #     ax.loglog()
-    
-    # plt.show()
-
-    # ############################################################################
+    if rich_output:
+        plot_all_break_fits(data, model_fits, broken_powerlaw)
 
     best_fit, best_aic, best_err, best_stats = min(model_fits, key=lambda x: x[1])
 
