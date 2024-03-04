@@ -13,8 +13,6 @@ def sequential_findflares(data) -> list:
     data['smoothed_flux'] = 10**(np.log10(data['flux']).rolling(window=3).mean())
     data.at[0, 'smoothed_flux'] = data['flux'].iloc[0]
 
-    data['smoothed_flux'] = data['flux']
-
     final_index = len(data.flux) - 2
     n = 0
     prev_start, prev_decay = 0, 0
@@ -48,7 +46,8 @@ def sequential_findflares(data) -> list:
             if check_rise(data, start_point, peak_point):
                 decay_point = find_decay(data, peak_point)
                 checks = [check_noise(data, start_point, peak_point, decay_point),
-                          check_above(data, start_point, decay_point)]
+                          check_above(data, start_point, decay_point),
+                          check_decay_shape(data, peak_point, decay_point)]
                 logger.debug(f"Checks: {checks}")
 
                 if all(checks):
@@ -209,8 +208,8 @@ def check_above(data: pd.DataFrame, start: int, decay: int) -> bool:
 
     """
     # Check flare boundaries.
-    start = 1 if start == 0 else start
-    decay = data.idxmax('index').time - 1 if decay == data.idxmax('index').time else decay
+    start = 0 if start == 0 else start - 1
+    decay = data.idxmax('index').time if decay == data.idxmax('index').time else decay + 1
 
     x_coords = data['time'].iloc[start], data['time'].iloc[decay]
     y_coords = data['flux'].iloc[start], data['flux'].iloc[decay]
@@ -225,4 +224,12 @@ def check_above(data: pd.DataFrame, start: int, decay: int) -> bool:
     num_points = len(data['flux'].iloc[start:decay])
 
     logger.debug(f"points above/num_points => {points_above}/{num_points} = {points_above/num_points}")
-    return True if points_above/num_points >= 0.65 else False
+    return True if points_above/num_points >= 0.7 else False
+
+def check_decay_shape(data: pd.DataFrame, peak: int, decay: int):
+
+    decay_data = list(data.iloc[peak:decay].flux_perr)
+    count_decrease = sum(b < a for a, b in zip(decay_data, decay_data[1:]))
+    decay_shape = count_decrease / len(decay_data)
+    # print("DECAY SHAPE VALUE", decay_shape)
+    return True if decay_shape > 0.7 else False
