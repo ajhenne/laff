@@ -99,7 +99,7 @@ def find_peak(data, start):
     :return: Integer position of the flare peak.
     """
 
-    chunksize = 4
+    chunksize = 5
     prev_chunk = data['flux'].iloc[start] # Flare start position is first point.
     next_chunk = np.average(data.iloc[start+1:start+1+chunksize].flux) # Calculate first 'next chunk'.
     i = 1
@@ -108,6 +108,7 @@ def find_peak(data, start):
         logger.debug(f"Looking at chunk i={i} : {(start+1)+(chunksize*i)}->{(start+1+4)+(chunksize*i)}")
         # Next chunk interation.
         i += 1
+        print('chunk is this', data.iloc[(start+1)+(chunksize*i):(start+1+chunksize)+(chunksize*i)])
         prev_chunk = next_chunk
         next_chunk = np.average(data.iloc[(start+1)+(chunksize*i):(start+1+chunksize)+(chunksize*i)].flux)
     else:

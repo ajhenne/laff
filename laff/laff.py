@@ -45,7 +45,7 @@ def set_logging_level(level):
     elif level.lower() in ['none', 'quiet']:
         logger.setLevel(60) # set to above all other levels
     else:
-        raise ValueError("Invalid logging level. Please use DEBUG, INFO, WARNING, ERROR, CRITICAL or NONE.")
+        raise ValueError("Invalid logging level. Please use 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL' or 'NONE'.")
 
 #################################################################################
 ### FIND FLARES
@@ -183,7 +183,7 @@ def fitGRB(data, count_ratio=1, rich_output=False):
 ### PLOTTING
 #################################################################################
 
-def plotGRB(data, fitted_grb):
+def plotGRB(data, fitted_grb, show=True):
     logger.info(f"Starting plotGRB.")
 
     # Plot lightcurve.
@@ -238,5 +238,8 @@ def plotGRB(data, fitted_grb):
 
     logger.info("Plotting functions done, displaying...")
     plt.loglog()
-    plt.show()
+
+    if show == True:
+        plt.show()
+        
     return
