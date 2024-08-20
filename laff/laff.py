@@ -11,7 +11,7 @@ from intersect import intersection
 # warnings.simplefilter(action='ignore', category=SettingWithCopyWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-from .flarefinding import sequential_findflares
+from .flarefinding import flare_finding, sequential_findflares
 from .modelling import find_intial_fit, fit_continuum_mcmc, flare_fitter, broken_powerlaw, fred_flare, improved_end_time
 from .utility import check_data_input, calculate_fit_statistics, calculate_fluence, get_xlims
 
@@ -37,6 +37,15 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 def set_logging_level(level):
+    """Set the desired logging level of the script.
+
+    Args:
+        level (string): from least to most verbose - 'none', 'debug', 'info', 'warning', 'error', 'critical'. The default level is normal.
+
+    Raises:
+        ValueError: Invalid logging level.
+    """
+
     if level.lower() in ['debug', 'info', 'warning', 'error', 'critical']:
         logging_level = level.upper()
         logger.setLevel(logging_level)
@@ -51,8 +60,8 @@ def set_logging_level(level):
 ### FIND FLARES
 #################################################################################
 
-def findFlares(data):
-    logger.debug("Starting sequential_findflares()")
+def findFlares(data, algorithm='sequential'):
+    logger.debug(f"Starting findFlares - method {algorithm}")
     data = check_data_input(data) # First check input format is good.
 
     # Cutoff late data.
@@ -60,8 +69,16 @@ def findFlares(data):
     data = data[data.time < 2000] if LATE_CUTOFF else data
 
     # Run flare finding.
-    flares = sequential_findflares(data)
+    try:
+        flares = flare_finding(data, algorithm)
+    except Exception as e:
+        raise e
+        raise ValueError("Inorrect algorithm used?")
 
+    # if algorithm == 'sequential':
+    #     flares = sequential_findflares(data)
+    # else:
+        # raise ValueError("Invalid flare finding algorithm.")
     logger.info(f"Found {len(flares)} flare(s).")
     return flares if len(flares) else False
 
@@ -75,7 +92,7 @@ def fitContinuum(data: pd.DataFrame, flare_indices: list, count_ratio: float, ri
     # Remove flare data.
     if flare_indices:
         for start, _, end in flare_indices:
-            data = data.drop(index=range(start, end))
+            data = data.drop(index=range(start+1, end))
 
     # Use ODR & AIC to find best number of powerlaw breaks.
     initial_fit, initial_fit_err, initial_fit_stats = find_intial_fit(data, rich_output)
@@ -183,8 +200,12 @@ def fitGRB(data, count_ratio=1, rich_output=False):
 ### PLOTTING
 #################################################################################
 
-def plotGRB(data, fitted_grb, show=True):
+def plotGRB(data, fitted_grb, show=True, save_path=None):
     logger.info(f"Starting plotGRB.")
+
+    plt.loglog()
+    plt.xlabel("Time (s)")
+    plt.ylabel("Flux (units)")
 
     # Plot lightcurve.
     logger.debug("Plotting lightcurve.")
@@ -192,6 +213,21 @@ def plotGRB(data, fitted_grb, show=True):
                 xerr=[-data.time_nerr, data.time_perr], \
                 yerr=[-data.flux_nerr, data.flux_perr], \
                 marker='', linestyle='None', capsize=0, zorder=1)
+    
+    # Adjustments for xlims, ylims on a log graph.
+    upper_flux, lower_flux = data['flux'].max() * 10, data['flux'].min() * 0.1
+    plt.ylim(lower_flux, upper_flux)
+    plt.xlim(get_xlims(data))
+
+    ## Go over this logic -- why?
+    if fitted_grb == None:
+        # Guard clause to just plot the light curve.
+        if show:
+            plt.show()
+            return
+        else:
+            return
+    
 
     # For smooth plotting of fitted functions.
     max, min = np.log10(data['time'].iloc[0]), np.log10(data['time'].iloc[-1])
@@ -225,21 +261,18 @@ def plotGRB(data, fitted_grb, show=True):
     logger.debug('Plotting total model.')
     plt.plot(constant_range, total_model, color='tab:orange', zorder=5)
 
-    # Adjustments for ylims on a log graph.
-    upper_flux, lower_flux = data['flux'].max() * 10, data['flux'].min() * 0.1
-    plt.ylim(lower_flux, upper_flux)
-    
-    plt.xlim(get_xlims(data))
-
     # Plot powerlaw breaks.
     logger.debug('Plotting powerlaw breaks.')
     for x_pos in fitted_grb['continuum']['parameters']['breaks']:
         plt.axvline(x=x_pos, color='grey', linestyle='--', linewidth=0.5, zorder=0)
 
+    if save_path:
+        plt.savefig(save_path)
     logger.info("Plotting functions done, displaying...")
-    plt.loglog()
-
     if show == True:
+        # what's the point ... just don't call the function?
+        # unless i can return the plot object somehow?
         plt.show()
+
         
     return
