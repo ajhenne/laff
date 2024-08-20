@@ -13,14 +13,14 @@ logger = logging.getLogger('laff')
 
 def fred_flare(x, params):
     x = np.array(x)
-    t_start = params[0]
+    tau = params[0]
     rise = params[1]
     decay = params[2]
     amplitude = params[3]
 
-    cond = x < t_start
+    cond = x < tau
 
-    model = amplitude * np.sqrt(np.exp(2*(rise/decay))) * np.exp(-(rise/(x-t_start))-((x-t_start)/decay))
+    model = amplitude * np.sqrt(np.exp(2*(rise/decay))) * np.exp(-(rise/(x-tau))-((x-tau)/decay))
     model[np.where(cond)] = 0
 
     return model
@@ -74,18 +74,18 @@ def flare_fitter(data, continuum, flares, use_odr=False):
 
         # Parameter estimates.
         t_peak = residuals['time'].iloc[peak]
-        t_start = residuals['time'].iloc[start]
-        rise = t_peak - t_start
+        tau = residuals['time'].iloc[start]
+        rise = t_peak - tau
         # decay = (residuals['time'].iloc[end] - t_peak)
         decay = 2 * rise
         # amplitude = abs(residuals['flux'].iloc[peak] - residuals['flux'].iloc[start])
         amplitude = residuals['flux'].iloc[peak]
-        input_par = [t_start, rise, decay, amplitude]
+        input_par = [tau, rise, decay, amplitude]
 
         # Perform intial ODR fit.
         logger.debug(f"For flare indices {start}/{peak}/{end}:")
         odr_par, odr_err = odr_fitter(data_flare, input_par)
-        odr_par = [abs(x) for x in odr_par]
+        # odr_par = [abs(x) for x in odr_par]
         odr_stats = calculate_fit_statistics(data, fred_flare, odr_par)
         odr_rchisq = odr_stats['rchisq']
         logger.debug(f"ODR Par: {odr_par}")
@@ -118,6 +118,7 @@ def flare_fitter(data, continuum, flares, use_odr=False):
         except ValueError:
             logger.debug(f'MCMC failed - using ODR fit.')
             final_par, final_err = odr_par, odr_err
+
 
         # Remove from residuals.
         fitted_flare = fred_flare(data.time, final_par)
@@ -286,12 +287,12 @@ def fl_log_likelihood(params, x, y, x_err, y_err):
 
 def fl_log_prior(params, TIME_END):
 
-    t_start = params[0]
+    tau = params[0]
     rise = params[1]
     decay = params[2]
     amplitude = params[3]
 
-    if not (t_start > 0) and (t_start < TIME_END):
+    if not (tau > 0) and (tau < TIME_END):
         return -np.inf
 
     if rise < 0:
