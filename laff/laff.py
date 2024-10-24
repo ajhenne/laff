@@ -68,7 +68,6 @@ def findFlares(data, algorithm='sequential'):
 
     # Run flare finding.
     flares = flare_finding(data, algorithm)
-    print(flares)
     logger.info(f"Found {len(flares)} flare(s).")
 
     return flares if len(flares) else False
