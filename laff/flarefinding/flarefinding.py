@@ -5,14 +5,24 @@ import pandas as pd
 logger = logging.getLogger('laff')
 
 def flare_finding(data, algorithm):
+    """Get the intended algorithm and find flares."""
 
-    # Run flare_finding.
-    if algorithm == 'default' or algorithm =='test':
-        raise ValueError("No default currently available!")
+    if algorithm in ('default', ''):
+        algorithm = 'sequential'
+
+    #####
     
-    elif algorithm == 'sequential':
-        from .algorithms import sequential_findflares
-        return sequential_findflares(data)
+    if algorithm == 'sequential':
+        from .algorithms import sequential
+        return sequential(data)
+    
+    elif algorithm == 'sequential_smooth':
+        from .algorithms import sequential
+        return sequential(data, smooth=True)
+    
+    elif algorithm == 'test':
+        from .algorithms import apply_filter
+        return apply_filter(data)
 
     return
 

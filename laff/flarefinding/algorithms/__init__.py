@@ -1,1 +1,2 @@
-from .sequential_v1 import sequential_findflares
+from .sequential import sequential
+from .savitsky import apply_filter

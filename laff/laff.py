@@ -11,7 +11,7 @@ from intersect import intersection
 # warnings.simplefilter(action='ignore', category=SettingWithCopyWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-from .flarefinding import flare_finding, sequential_findflares
+from .flarefinding import flare_finding
 from .modelling import find_intial_fit, fit_continuum_mcmc, flare_fitter, broken_powerlaw, fred_flare, gaussian_flare, improved_end_time
 from .utility import check_data_input, calculate_fit_statistics, calculate_fluence, get_xlims
 
@@ -61,25 +61,16 @@ def set_logging_level(level):
 #################################################################################
 
 def findFlares(data, algorithm='sequential'):
+    """Identify flares within datasets."""
+
     logger.debug(f"Starting findFlares - method {algorithm}")
     data = check_data_input(data) # First check input format is good.
 
-    # Cutoff late data.
-    LATE_CUTOFF = False
-    data = data[data.time < 2000] if LATE_CUTOFF else data
-
     # Run flare finding.
-    try:
-        flares = flare_finding(data, algorithm)
-    except Exception as e:
-        raise e
-        raise ValueError("Inorrect algorithm used?")
-
-    # if algorithm == 'sequential':
-    #     flares = sequential_findflares(data)
-    # else:
-        # raise ValueError("Invalid flare finding algorithm.")
+    flares = flare_finding(data, algorithm)
+    print(flares)
     logger.info(f"Found {len(flares)} flare(s).")
+
     return flares if len(flares) else False
 
 #################################################################################
