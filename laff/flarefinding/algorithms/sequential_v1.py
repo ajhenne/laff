@@ -80,8 +80,6 @@ def find_start(data: pd.DataFrame, start: int, prev_decay: int) -> int:
         points = data.iloc[0:3]
     else:
         points = data.iloc[start-3:start+1]
-    logger.info(f"start  are: {start}")
-    logger.info(f"points are: {points}")
     minimum = data[data.flux == min(points.flux)].index.values[0]
     minimum = prev_decay if (minimum < prev_decay) else minimum
     logger.debug(f"Flare start found at {minimum}")
@@ -157,11 +155,12 @@ def find_decay(data: pd.DataFrame, peak: int) -> int:
 
     while condition < 3:
         decay += 1
-        if data_smth.idxmax('index').time in [decay + i for i in range(-1,2)]:
+        if data_smth.idxmax('index').time in [decay + i for i in range(-1,2)]:  # reach end of data
             logger.debug(f"Reached end of data, automatically ending flare at {decay + 1}")
             condition = 3
             decay = data_smth.idxmax('index').time
             continue
+        ## TODO add filter here - if index N and index N+1 gap is >1000 then it's an orbital gap and end flare withn o flare.
 
         # Calculate gradients.
         NextAlong = calc_grad(data_smth, decay, decay+1)
@@ -280,4 +279,4 @@ def check_decay_shape(data: pd.DataFrame, peak: int, decay: int):
         return True
     
     # print("DECAY SHAPE VALUE", decay_shape)
-    return True if decay_shape >= 0.6 else False
+    return True if decay_shape >= 0.5 else False

@@ -63,7 +63,7 @@ def broken_powerlaw_wrapper(params, x):
 
 from scipy.odr import ODR, Model, RealData
 
-def find_intial_fit(data, rich_output):
+def find_intial_fit(data, rich_output, force_break):
     data_start, data_end = data['time'].iloc[0], data['time'].iloc[-1]
     model_fits = []
 
@@ -86,6 +86,10 @@ def find_intial_fit(data, rich_output):
         # Evaluate fit.
         fit_stats = calculate_fit_statistics(data, broken_powerlaw, fit_par)
         deltaAIC = fit_stats['deltaAIC']
+
+        if breaknum == force_break:
+            deltaAIC = -10000
+            logger.critical(f"Forcing {force_break} breaks")
 
         model_fits.append([fit_par, deltaAIC, fit_err, fit_stats])
 

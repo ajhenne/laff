@@ -12,7 +12,7 @@ from intersect import intersection
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 from .flarefinding import flare_finding, sequential_findflares
-from .modelling import find_intial_fit, fit_continuum_mcmc, flare_fitter, broken_powerlaw, fred_flare, improved_end_time
+from .modelling import find_intial_fit, fit_continuum_mcmc, flare_fitter, broken_powerlaw, fred_flare, gaussian_flare, improved_end_time
 from .utility import check_data_input, calculate_fit_statistics, calculate_fluence, get_xlims
 
 # findFlares() -- locate the indices of flares in the lightcurve
@@ -86,7 +86,7 @@ def findFlares(data, algorithm='sequential'):
 ### CONTINUUM FITTING
 #################################################################################
 
-def fitContinuum(data: pd.DataFrame, flare_indices: list, count_ratio: float, rich_output: bool) -> dict:
+def fitContinuum(data: pd.DataFrame, flare_indices: list, count_ratio: float = 1, rich_output: bool = False, break_num: int = False) -> dict:
     logger.debug(f"Starting fitContinuum")
 
     # Remove flare data.
@@ -95,11 +95,12 @@ def fitContinuum(data: pd.DataFrame, flare_indices: list, count_ratio: float, ri
             data = data.drop(index=range(start+1, end))
 
     # Use ODR & AIC to find best number of powerlaw breaks.
-    initial_fit, initial_fit_err, initial_fit_stats = find_intial_fit(data, rich_output)
+    initial_fit, initial_fit_err, initial_fit_stats = find_intial_fit(data, rich_output, break_num)
     break_number = int((len(initial_fit-2)/2)-1)
 
     # Try an MCMC fitting run.
     try:
+        raise ValueError
         final_par, final_err = fit_continuum_mcmc(data, break_number, initial_fit, initial_fit_err)
     except ValueError:
         final_par, final_err = initial_fit, initial_fit_err
@@ -155,29 +156,34 @@ def fitContinuum(data: pd.DataFrame, flare_indices: list, count_ratio: float, ri
 ### FIT FLARES
 #################################################################################
 
-def fitFlares(data, flares, continuum, count_ratio):
+def fitFlares(data, flares, continuum, count_ratio, flare_model='fred', use_odr=False):
 
     if not flares:
         return False
+    
+    if flare_model == 'fred':
+        model_flare = fred_flare
+    elif flare_model == 'gauss':
+        model_flare = gaussian_flare
 
     # Fit each flare.
-    flare_fits, flare_errs = flare_fitter(data, continuum, flares)
+    flare_fits, flare_errs = flare_fitter(data, continuum, flares, model=flare_model, use_odr=use_odr)
 
     # Format into dictionary nicely.
     fittedFlares = []
     for indices, par, err in zip(flares, flare_fits, flare_errs):
         # First run newly calculated end times.
-        indices[2], new_end_time = improved_end_time(data, indices, par, continuum['parameters'])
+        # indices[2], new_end_time = improved_end_time(data, indices, par, continuum['parameters'])
         times = [data.iloc[x].time for x in indices]
-        times[2] = new_end_time
-        fluence_rise = calculate_fluence(fred_flare, par, times[0], times[1], count_ratio)
-        fluence_decay = calculate_fluence(fred_flare, par, times[1], times[2], count_ratio)
+        # times[2] = new_end_time
+        fluence_rise = calculate_fluence(model_flare, par, times[0], times[1], count_ratio)
+        fluence_decay = calculate_fluence(model_flare, par, times[1], times[2], count_ratio)
         fluence_total = fluence_rise + fluence_decay
 
         peak_flux = data.iloc[indices[1]].flux
         peak_flux_err = data.iloc[indices[1]].flux_perr
 
-        fittedFlares.append({'times': times, 'indices': indices, 'par': par, 'par_err': err, 'fluence': [fluence_total, fluence_rise, fluence_decay], 'peak_flux': [peak_flux, peak_flux_err]})
+        fittedFlares.append({'times': times, 'indices': indices, 'flare_model': flare_model, 'par': par, 'par_err': err, 'fluence': [fluence_total, fluence_rise, fluence_decay], 'peak_flux': [peak_flux, peak_flux_err]})
 
     return fittedFlares
 
@@ -185,13 +191,19 @@ def fitFlares(data, flares, continuum, count_ratio):
 ### FIT GRB LIGHTCURVE
 #################################################################################
 
-def fitGRB(data, count_ratio=1, rich_output=False):
+def fitGRB(data: pd.DataFrame, flare_model: str = 'fred', count_ratio: int = 1, rich_output: bool = False, use_odr: bool = False, break_num=False):
+    # flare_model - use a certain flare model
+    # use_odr - force use odr, disregard mcmc fitting
+    # force_breaks - force a certain break_num
+
+    # remove rich_output
+    ## TODO ADD DESC HERE
     logger.debug(f"Starting fitGRB")
     data = check_data_input(data)
 
     flare_indices = findFlares(data) # Find flare deviations.
-    continuum = fitContinuum(data, flare_indices, count_ratio, rich_output) # Fit continuum.
-    flares = fitFlares(data, flare_indices, continuum, count_ratio) # Fit flares.
+    continuum = fitContinuum(data, flare_indices, count_ratio, rich_output, break_num) # Fit continuum.
+    flares = fitFlares(data, flare_indices, continuum, count_ratio, flare_model, use_odr=use_odr) # Fit flares.
 
     logger.info(f"LAFF run finished.")
     return {'flares': flares, 'continuum': continuum}
@@ -209,6 +221,7 @@ def plotGRB(data, fitted_grb, show=True, save_path=None):
 
     # Plot lightcurve.
     logger.debug("Plotting lightcurve.")
+
     plt.errorbar(data.time, data.flux,
                 xerr=[-data.time_nerr, data.time_perr], \
                 yerr=[-data.flux_nerr, data.flux_perr], \
@@ -227,7 +240,6 @@ def plotGRB(data, fitted_grb, show=True, save_path=None):
             return
         else:
             return
-    
 
     # For smooth plotting of fitted functions.
     max, min = np.log10(data['time'].iloc[0]), np.log10(data['time'].iloc[-1])
@@ -253,9 +265,12 @@ def plotGRB(data, fitted_grb, show=True, save_path=None):
                         marker='', linestyle='None', capsize=0, color='r', zorder=2)
 
             # Plot flare models.
-            flare_model = fred_flare(constant_range, flare['par'])
+            if flare['flare_model'] == 'fred': plotting_model = fred_flare
+            if flare['flare_model'] == 'gauss': plotting_model = gaussian_flare
+
+            flare_model = plotting_model(constant_range, flare['par'])
             total_model += flare_model
-            plt.plot(constant_range, fred_flare(constant_range, flare['par']), color='tab:green', linewidth=0.6, zorder=3)
+            plt.plot(constant_range, plotting_model(constant_range, flare['par']), color='tab:green', linewidth=0.6, zorder=3)
 
     # Plot total model.
     logger.debug('Plotting total model.')
