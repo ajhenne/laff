@@ -30,6 +30,13 @@ def check_data_input(data):
     if not isinstance(data, pd.DataFrame):
         raise TypeError(f"Invalid input data type. Should be pandas dataframe.")
 
+    if len(data) <= 3:
+        logger.warning("")
+        return False
+
+    if not data.shape[1] == 4 and not data.shape[1] == 6:
+        raise ValueError("Expected dataframe of shape (X, 4) or (X, 6)")
+
     # Check column names.
     expected_columns = ['time', 'time_perr', 'time_nerr', 'flux', 'flux_perr', 'flux_nerr']
     if data.shape[1] == 4:
@@ -44,9 +51,10 @@ def check_data_input(data):
     
     data = data.reset_index(drop=True)
 
+
     logger.debug('Data input is good.')
 
-    return data
+    return True
 
 def calculate_fluence(model, params, start, stop, count_flux_ratio):
     """Given some model and range, calculate the fluence. Optional count/flux ratio, default 1."""
