@@ -4,7 +4,8 @@ import pandas as pd
 from scipy.signal import savgol_filter
 import logging
 
-from .flare_checks import check_rise, check_noise, check_above, check_decay_shape
+from .flare_checks import check_rise
+# , check_noise, check_above, check_decay_shape
 
 logger = logging.getLogger('laff')
 
@@ -50,10 +51,11 @@ def apply_filter(data) -> list:
             peak_point, decay_point = find_decay(data, peak_point)
             logger.debug(f'Possible flare rise from {start_point}->{peak_point}')
 
-            checks = [  check_rise(data, start_point, peak_point),
-                        check_noise(data, start_point, peak_point, decay_point),
-                        check_above(data, start_point, decay_point),
-                        check_decay_shape(data, peak_point, decay_point)    ]
+            # checks = [  check_rise(data, start_point, peak_point),
+            #             check_noise(data, start_point, peak_point, decay_point),
+            #             check_above(data, start_point, decay_point),
+            #             check_decay_shape(data, peak_point, decay_point)    ]
+            checks = [check_rise(data, start_point, peak_point)]
             #dev
             # checks = [True for x in checks]
             #dev
@@ -159,11 +161,15 @@ def find_decay(data: pd.DataFrame, peak: int) -> int:
 
     while condition < 3:
         decay += 1
+
+        # Boundary condition for end of data.
         if data_smth.idxmax('index').time in [decay + i for i in range(-1,2)]:  # reach end of data
             logger.debug(f"Reached end of data, automatically ending flare at {decay + 1}")
             condition = 3
             decay = data_smth.idxmax('index').time
             continue
+
+        # Condition for large orbital gaps.
         if (data['time'].iloc[decay+1] - data['time'].iloc[decay]) > (data['time'].iloc[decay] - data['time'].iloc[peak]) * 10:
             logger.debug(f"Gap between {decay}->{decay+1} is greater than {peak}->{decay} * 10")
             condition = 3
@@ -184,15 +190,32 @@ def find_decay(data: pd.DataFrame, peak: int) -> int:
             cond3 = True
 
         # Evaluate conditions - logic in notebook 20th august.
+        # if cond1 and cond2 and cond3:
+        #     condition += 1
+        # else:
+        #     condition = condition - 1 if condition > 0 else 0
+
         if cond1 and cond2 and cond3:
-            condition += 1
+            if condition == 2:
+                condition = 3
+            elif condition == 1:
+                condition = 3
+            elif condition == 0:
+                condition = 2
         else:
-            condition = condition - 1 if condition > 0 else 0
+            if condition == 2:
+                condition = 1
+            if condition == 1:
+                condition = 0
 
 
     logger.debug(f"Decay end found at {decay - 1}")
     decay = decay - 1
 
+    # Adjust end for local minima.
+    decay = data[data.flux == min(data.iloc[decay-2:decay].flux)].index.values[0]
+    if decay <= peak:
+        decay = peak + 1
 
     # Check flare peak adjustments.
     adjusted_flare_peak = data[data.flux == max(data.iloc[peak:decay].flux)].index.values[0]
