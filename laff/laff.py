@@ -64,7 +64,8 @@ def findFlares(data, algorithm='sequential'):
     """Identify flares within datasets."""
 
     logger.debug(f"Starting findFlares - method {algorithm}")
-    data = check_data_input(data) # First check input format is good.
+    if check_data_input(data) == False:
+        return  # First check input format is good.
 
     # Run flare finding.
     flares = flare_finding(data, algorithm)
