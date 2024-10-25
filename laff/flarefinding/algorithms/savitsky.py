@@ -4,9 +4,11 @@ import pandas as pd
 from scipy.signal import savgol_filter
 import logging
 
+from .flare_checks import check_rise, check_noise, check_above, check_decay_shape
+
 logger = logging.getLogger('laff')
 
-def apply_filter(data, smooth=False) -> list:
+def apply_filter(data) -> list:
     logger.debug("Starting sequential_findflares()")
 
     size = int(len(data.time)/10) if len(data.time) <= 30 else 13
@@ -45,31 +47,27 @@ def apply_filter(data, smooth=False) -> list:
 
             start_point = find_start(data, search_start, prev_decay)
             peak_point = find_peak(data, start_point)
-
+            peak_point, decay_point = find_decay(data, peak_point)
             logger.debug(f'Possible flare rise from {start_point}->{peak_point}')
 
-            if check_rise(data, start_point, peak_point):
-                peak_point, decay_point = find_decay(data, peak_point)
-                checks = [check_noise(data, start_point, peak_point, decay_point),
-                          check_above(data, start_point, decay_point),
-                          check_decay_shape(data, peak_point, decay_point)]
-                #dev
-                # checks = [True for x in checks]
-                #dev
-                logger.debug(f"Checks: {checks}")
+            checks = [  check_rise(data, start_point, peak_point),
+                        check_noise(data, start_point, peak_point, decay_point),
+                        check_above(data, start_point, decay_point),
+                        check_decay_shape(data, peak_point, decay_point)    ]
+            #dev
+            # checks = [True for x in checks]
+            #dev
+            logger.debug(f"Checks: {checks}")
 
-                if all(checks):
-                    FLARES.append([start_point, peak_point, decay_point])
-                    logger.debug(f"Confirmed flare::  {start_point, peak_point, decay_point}")
-                    n = decay_point
-                    prev_decay = decay_point
-                    continue
-                else:
-                    # All checks failed.
-                    logger.debug("Flare failed passing all tests - discarding.")
+            if all(checks):
+                FLARES.append([start_point, peak_point, decay_point])
+                logger.debug(f"Confirmed flare::  {start_point, peak_point, decay_point}")
+                n = decay_point
+                prev_decay = decay_point
+                continue
             else:
-                # Check failed.
-                logger.debug(f"Deviations has NOT passed checks - discarding")
+                # All checks failed.
+                logger.debug("Flare failed passing all tests - discarding.")
         else:
             # search_count not greater than 2, move on.
             pass
@@ -209,69 +207,3 @@ def find_decay(data: pd.DataFrame, peak: int) -> int:
     # once end is found we will check if the flare is 'good'
     # if flare is good, accept it and continue search -> from end + 1
     # if flare is not good, disregard and continue search from deviation + 1
-
-def check_rise(data: pd.DataFrame, start: int, peak: int) -> bool:
-    """Test the rise is significant enough."""
-    if data.iloc[peak].flux > data.iloc[start].flux + (2 * data.iloc[start].flux_perr):
-        logger.debug("check_rise: true")
-        return True
-    else:
-        logger.debug("check_rise: false")
-        return False
-
-
-def check_noise(data: pd.DataFrame, start: int, peak: int, decay: int) -> bool:
-    """Check if flare is greater than x1.75 the average noise across the flare."""
-    average_noise = abs(np.average(data.iloc[start:decay].flux_perr)) + abs(np.average(data.iloc[start:decay].flux_nerr))
-    flux_increase = data.iloc[peak].flux - data.iloc[start].flux
-    logger.debug(f"noise: {average_noise} | delta_flux: {flux_increase}")
-    return True if flux_increase > 1.75 * average_noise else False
-
-# def check_shape(data: pd.DataFrame, start: int, peak:int, decay:int) -> bool:
-    # """Check the shape of the flare."""
-
-def check_above(data: pd.DataFrame, start: int, decay: int) -> bool:
-    """
-    Check the flare is above the (estimated) continuum.
-    
-    We calculate the powerlaw continuum through the flare by solving a set of
-    power functions for (x, y) co-ordinates corresponding to the found flare
-    start and end times. The number of points above and below the slope can then
-    be found. If the fraction above the continuum is below 0.7, to allow some
-    variation through noise, we discard the flare.
-
-    """
-    # Check flare boundaries.
-    start = 0 if start == 0 else start - 1
-    decay = data.idxmax('index').time if decay == data.idxmax('index').time else decay + 1
-
-    x_coords = data['time'].iloc[start], data['time'].iloc[decay]
-    y_coords = data['flux'].iloc[start], data['flux'].iloc[decay]
-
-    ## Solving y = nx^a for start and stop.
-    alpha = np.emath.logn(x_coords[1]/x_coords[0], y_coords[1]/y_coords[0])
-    norm = y_coords[1] / x_coords[1] ** alpha
-    # logger.debug(f"ALPHA IS {alpha}")
-    # logger.debug(f"NORM IS {norm}")
-    
-    points_above = sum(flux > (norm*time**alpha) for flux, time in zip(data['flux'].iloc[start:decay], data['time'].iloc[start:decay]))
-    num_points = len(data['flux'].iloc[start:decay])
-
-    logger.debug(f"points above/num_points => {points_above}/{num_points} = {points_above/num_points}")
-
-    # return True
-    return True if points_above/num_points >= 0.7 else False
-
-def check_decay_shape(data: pd.DataFrame, peak: int, decay: int):
-
-    decay_data = list(data.iloc[peak:decay].flux_perr)
-    count_decrease = sum(b < a for a, b in zip(decay_data, decay_data[1:]))
-
-    decay_shape = count_decrease / len(decay_data)
-    logger.debug(f"decay shape {decay_shape}")
-    
-    if len(decay_data) < 4 and decay_shape > 0.1:
-        return True
-    
-    # print("DECAY SHAPE VALUE", decay_shape)
-    return True if decay_shape >= 0.5 else False
