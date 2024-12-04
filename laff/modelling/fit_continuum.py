@@ -87,7 +87,7 @@ def find_intial_fit(data, rich_output, force_break):
         fit_stats = calculate_fit_statistics(data, broken_powerlaw, fit_par)
         deltaAIC = fit_stats['deltaAIC']
 
-        if breaknum == force_break:
+        if not isinstance(force_break, bool) and breaknum == force_break:
             deltaAIC = -10000
             logger.critical(f"Forcing {force_break} breaks")
 
