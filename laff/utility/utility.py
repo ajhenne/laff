@@ -27,12 +27,12 @@ def calculate_fit_statistics(data, model, params):
 
 def check_data_input(data):
 
-    if not isinstance(data, pd.DataFrame):
-        raise TypeError(f"Invalid input data type. Should be pandas dataframe.")
+    # if not isinstance(data, pd.DataFrame):
+        # raise TypeError(f"Invalid input data type. Should be pandas dataframe.")
 
-    if len(data) <= 3:
-        logger.warning("")
-        return False
+    if len(data) < 3:
+        logger.critical("Too short.")
+        raise ValueError(f"Data too short, require at least 3 data points - given data is {len(data)}")
 
     if not data.shape[1] == 4 and not data.shape[1] == 6:
         raise ValueError("Expected dataframe of shape (X, 4) or (X, 6)")

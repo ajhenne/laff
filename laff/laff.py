@@ -147,7 +147,7 @@ def fitContinuum(data: pd.DataFrame, flare_indices: list, count_ratio: float = 1
 ### FIT FLARES
 #################################################################################
 
-def fitFlares(data, flares, continuum, count_ratio, flare_model='fred', use_odr=False):
+def fitFlares(data, flares, continuum, count_ratio, flare_model='fred', skip_mcmc=False):
 
     if not flares:
         return False
@@ -158,7 +158,7 @@ def fitFlares(data, flares, continuum, count_ratio, flare_model='fred', use_odr=
         model_flare = gaussian_flare
 
     # Fit each flare.
-    flare_fits, flare_errs = flare_fitter(data, continuum, flares, model=flare_model, use_odr=use_odr)
+    flare_fits, flare_errs = flare_fitter(data, continuum, flares, model=flare_model, skip_mcmc=skip_mcmc)
 
     # Format into dictionary nicely.
     fittedFlares = []
@@ -182,7 +182,7 @@ def fitFlares(data, flares, continuum, count_ratio, flare_model='fred', use_odr=
 ### FIT GRB LIGHTCURVE
 #################################################################################
 
-def fitGRB(data: pd.DataFrame, flare_model: str = 'fred', count_ratio: int = 1, rich_output: bool = False, use_odr: bool = False, break_num=False):
+def fitGRB(data: pd.DataFrame, flare_algorithm: str = 'sequential', flare_model: str = 'fred', count_ratio: int = 1, rich_output: bool = False, skip_mcmc: bool = False, break_num=False):
     # flare_model - use a certain flare model
     # use_odr - force use odr, disregard mcmc fitting
     # force_breaks - force a certain break_num
@@ -190,11 +190,12 @@ def fitGRB(data: pd.DataFrame, flare_model: str = 'fred', count_ratio: int = 1, 
     # remove rich_output
     ## TODO ADD DESC HERE
     logger.debug(f"Starting fitGRB")
-    data = check_data_input(data)
+    if check_data_input(data) == False:
+        raise ValueError("check data failed")
 
-    flare_indices = findFlares(data) # Find flare deviations.
+    flare_indices = findFlares(data, algorithm=flare_algorithm) # Find flare deviations.
     continuum = fitContinuum(data, flare_indices, count_ratio, rich_output, break_num) # Fit continuum.
-    flares = fitFlares(data, flare_indices, continuum, count_ratio, flare_model, use_odr=use_odr) # Fit flares.
+    flares = fitFlares(data, flare_indices, continuum, count_ratio, flare_model, skip_mcmc=skip_mcmc) # Fit flares.
 
     logger.info(f"LAFF run finished.")
     return {'flares': flares, 'continuum': continuum}

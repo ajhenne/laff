@@ -4,16 +4,14 @@ import pandas as pd
 from scipy.signal import savgol_filter
 import logging
 
-from .flare_checks import check_rise
-# , check_noise, check_above, check_decay_shape
-
 logger = logging.getLogger('laff')
 
 def apply_filter(data) -> list:
     logger.debug("Starting sequential_findflares()")
 
-    size = int(len(data.time)/10) if len(data.time) <= 30 else 13
-    size = 4 if size < 4 else size
+    # size = int(len(data.time)/10) if len(data.time) <= 30 else 13
+    # size = 4 if size < 4 else size
+    size = 7 if len(data.index) > 7 else 4
     data['savgol'] = savgol_filter(data.flux, window_length=size, polyorder=3)
 
     #######
@@ -47,15 +45,18 @@ def apply_filter(data) -> list:
             logger.debug(f"Possible deviation from {search_start}->{search_start+search_count} ({data.iloc[search_start].time})")
 
             start_point = find_start(data, search_start, prev_decay)
+            # print(f'{start_point=}')
             peak_point = find_peak(data, start_point)
-            peak_point, decay_point = find_decay(data, peak_point)
-            logger.debug(f'Possible flare rise from {start_point}->{peak_point}')
+            # print(f'{peak_point=}')
+
+            peak_point, decay_point = find_decay(data, start_point, peak_point)
+            # logger.debug(f'Possible flare rise from {start_point}->{peak_point}')
 
             # checks = [  check_rise(data, start_point, peak_point),
             #             check_noise(data, start_point, peak_point, decay_point),
             #             check_above(data, start_point, decay_point),
             #             check_decay_shape(data, peak_point, decay_point)    ]
-            checks = [check_rise(data, start_point, peak_point)]
+            checks = [check_noise(data, start_point, peak_point)]
             #dev
             # checks = [True for x in checks]
             #dev
@@ -81,10 +82,10 @@ def apply_filter(data) -> list:
 
 def find_start(data: pd.DataFrame, start: int, prev_decay: int) -> int:
     """Return flare start by looking for local minima."""
-    if start < 6:
-        points = data.iloc[0:6]
+    if start < 3:
+        points = data.iloc[0:3]
     else:
-        points = data.iloc[start-3:start+3]
+        points = data.iloc[start-3:start+2]
     minimum = data[data.flux == min(points.flux)].index.values[0]
     minimum = prev_decay if (minimum < prev_decay) else minimum
     logger.debug(f"Flare start found at {minimum}")
@@ -110,6 +111,15 @@ def find_peak(data, start):
     chunksize = 4
     prev_chunk = data['flux'].iloc[start] # Flare start position is first point.
     next_chunk = np.average(data.iloc[start+1:start+1+chunksize].flux) # Calculate first 'next chunk'.
+
+    # boundary for end of data
+    if start + 1 + chunksize >= len(data.index): # has looped around
+        points = data.iloc[start+1:len(data.index)]
+        maximum = data[data.flux == max(points.flux)].index.values[0]
+
+        logger.debug(f"Flare peak found at {maximum} - using end of data cutoff.")
+        return maximum
+
     i = 1
 
     while next_chunk > prev_chunk:
@@ -125,11 +135,11 @@ def find_peak(data, start):
         points = data.iloc[start:(start+1+chunksize)+(chunksize*i)]
         maximum = data[data.flux == max(points.flux)].index.values[0]
 
-        logger.debug(f"Flare peak found at {maximum}")
+    logger.debug(f"Flare peak found at {maximum}")
     return maximum
 
 
-def find_decay(data: pd.DataFrame, peak: int) -> int:
+def find_decay(data: pd.DataFrame, start: int, peak: int) -> int:
     """
     Find the end of the flare as the decay smoothes into continuum.
 
@@ -140,33 +150,28 @@ def find_decay(data: pd.DataFrame, peak: int) -> int:
     :returns:
     """
 
-    # Apply smoothing function.
-    data_smth = data.copy(deep=True)
-    data_smth['flux'] = 10**(np.log10(data_smth['flux']).rolling(window=2).mean())
-
-    # data['smoothed_flux'] = 10**(np.log10(data['flux']).rolling(window=2).mean())
-    # data.at[0, 'smoothed_flux'] = data['flux'].iloc[0]
-
     decay = peak
     condition = 0
     # decaypar = 2.5
 
     logger.debug(f"Looking for decay")
 
-    def calc_grad(data: pd.DataFrame, idx1: int, idx2: int) -> int:
+    def calc_grad(data: pd.DataFrame, idx1: int, idx2: int, peak: bool = False) -> int:
         """Calculate gradient between first (idx1) and second (idx2) points."""
-        deltaFlux = data.iloc[idx2].flux - data.iloc[idx1].flux
+        deltaFlux = data.iloc[idx2].savgol - data.iloc[idx1].flux if peak else data.iloc[idx2].savgol - data.iloc[idx1].savgol
         deltaTime = data.iloc[idx2].time - data.iloc[idx1].time
+        if deltaTime < 0:
+            raise ValueError("It appears data is not sorted in time order. Please fix this.")
         return deltaFlux/deltaTime
 
     while condition < 3:
         decay += 1
 
         # Boundary condition for end of data.
-        if data_smth.idxmax('index').time in [decay + i for i in range(-1,2)]:  # reach end of data
+        if data.idxmax('index').time in [decay + i for i in range(-1,2)]:  # reach end of data
             logger.debug(f"Reached end of data, automatically ending flare at {decay + 1}")
             condition = 3
-            decay = data_smth.idxmax('index').time
+            decay = data.idxmax('index').time
             continue
 
         # Condition for large orbital gaps.
@@ -176,11 +181,19 @@ def find_decay(data: pd.DataFrame, peak: int) -> int:
             decay += 1
             continue
 
+        # Condition for being greater than peak.
+        if data['savgol'].iloc[decay+1] > data['savgol'].iloc[peak]:
+            logger.debug("Has risen higher than the peak.")
+            condition = 3
+            continue
+
         # Calculate gradients.
-        NextAlong = calc_grad(data_smth, decay, decay+1)
-        PrevAlong = calc_grad(data_smth, decay-1, decay)
-        PeakToCurrent = calc_grad(data_smth, peak, decay)
-        PeakToPrev = calc_grad(data_smth, peak, decay-1)
+        NextAlong = calc_grad(data, decay, decay+1)
+        PrevAlong = calc_grad(data, decay-1, decay)
+        PeakToCurrent = calc_grad(data, peak, decay, peak=True)
+        PeakToPrev = calc_grad(data, peak, decay-1, peak=True)
+        
+        # print(NextAlong, PrevAlong, PeakToCurrent, PeakToPrev)
 
         cond1 = NextAlong > PeakToCurrent # Next sequence is shallower than from peak to next current.
         cond2 = NextAlong > PrevAlong # Next grad is shallower than previous grad.
@@ -195,6 +208,11 @@ def find_decay(data: pd.DataFrame, peak: int) -> int:
         # else:
         #     condition = condition - 1 if condition > 0 else 0
 
+        ## dev
+        # print(f"At {decay} conditions are [{cond1, cond2, cond3}] and condition before eval is {condition}")
+        ## dev
+
+
         if cond1 and cond2 and cond3:
             if condition == 2:
                 condition = 3
@@ -208,13 +226,16 @@ def find_decay(data: pd.DataFrame, peak: int) -> int:
             if condition == 1:
                 condition = 0
 
+        if (data['savgol'].iloc[decay] > data['flux'].iloc[start]):
+            condition = 0
 
-    logger.debug(f"Decay end found at {decay - 1}")
-    decay = decay - 1
+
+    logger.debug(f"Decay end found at {decay}")
 
     # Adjust end for local minima.
-    decay = data[data.flux == min(data.iloc[decay-2:decay].flux)].index.values[0]
+    decay = data[data.flux == min(data.iloc[decay-1:decay+1].flux)].index.values[0]
     if decay <= peak:
+        raise ValueError('decay is before or on the peak')
         decay = peak + 1
 
     # Check flare peak adjustments.
@@ -230,3 +251,17 @@ def find_decay(data: pd.DataFrame, peak: int) -> int:
     # once end is found we will check if the flare is 'good'
     # if flare is good, accept it and continue search -> from end + 1
     # if flare is not good, disregard and continue search from deviation + 1
+
+
+#####
+# checks
+
+def check_noise(data, start_point, peak_point):
+    """Flare rise must be greater than x2 the local noise."""
+
+    flare_rise = data.iloc[peak_point].savgol - data.iloc[start_point].savgol
+    noise_level = np.average([data.iloc[start_point:peak_point].flux_perr, abs(data.iloc[start_point:peak_point].flux_nerr)])
+
+    if flare_rise < 2 * noise_level:
+        return False
+    return True

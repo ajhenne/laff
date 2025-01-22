@@ -86,12 +86,15 @@ def find_intial_fit(data, rich_output, force_break):
         # Evaluate fit.
         fit_stats = calculate_fit_statistics(data, broken_powerlaw, fit_par)
         deltaAIC = fit_stats['deltaAIC']
+        print(breaknum, deltaAIC)
 
         if not isinstance(force_break, bool) and breaknum == force_break:
             deltaAIC = -10000
             logger.critical(f"Forcing {force_break} breaks")
 
         model_fits.append([fit_par, deltaAIC, fit_err, fit_stats])
+
+    print(breaknum)
 
     if rich_output:
         plot_all_break_fits(data, model_fits, broken_powerlaw)

@@ -12,16 +12,17 @@ logger = logging.getLogger('laff')
 #################################################################################
 
 def fred_flare(x, params):
+    # J. P. Norris et al., ‘Attributes of Pulses in Long Bright Gamma-Ray Bursts’, The Astrophysical Journal, vol. 459, p. 393, Mar. 1996, doi: 10.1086/176902.
+    
     x = np.array(x)
-    tau = params[0]
+    t_max = params[0]
     rise = params[1]
     decay = params[2]
-    amplitude = params[3]
+    sharpness = params[3]
+    amplitude = params[4]
 
-    cond = x < tau  
-
-    model = amplitude * np.sqrt(np.exp(2*(rise/decay))) * np.exp(-(rise/(x-tau))-((x-tau)/decay))
-    model[np.where(cond)] = 0
+    model = amplitude * np.exp( -(abs(x - t_max) / rise) ** sharpness)
+    model[np.where(x > t_max)] = amplitude * np.exp( -(abs(x[np.where(x > t_max)] - t_max) / decay) ** sharpness)
 
     return model
 
@@ -41,6 +42,38 @@ def all_flares_fred(x, params):
 
     return sum_all_flares
 
+
+
+def old_fred_flare(x, params):
+    x = np.array(x)
+    tau = params[0]
+    rise = params[1]
+    decay = params[2]
+    amplitude = params[3]
+
+    cond = x < tau  
+
+    model = amplitude * np.sqrt(np.exp(2*(rise/decay))) * np.exp(-(rise/(x-tau))-((x-tau)/decay))
+    model[np.where(cond)] = 0
+
+    return model
+
+def old_fred_flare_wrapper(params, x):
+    return old_fred_flare(x, params)
+
+def old_all_flares_fred(x, params):
+    x = np.array(x)
+
+    flare_params = [params[i:i+4] for i in range(0, len(params), 4)]
+    
+    sum_all_flares = [0.0] * len(x)
+
+    for flare in flare_params:
+        fit_flare = old_fred_flare(x, flare)
+        sum_all_flares = [prev + current for prev, current in zip(sum_all_flares, fit_flare)]
+
+    return sum_all_flares
+
 #################################################################################
 ### GAUSSIAN MODEL
 #################################################################################
@@ -52,6 +85,7 @@ def gaussian_flare(x, params):
     width = np.abs(params[2])
 
     model = height * np.exp(-((x-centre)**2)/(2*(width**2)))
+
     return model
 
 def gaussian_flare_wrapper(params, x):
@@ -76,7 +110,7 @@ def all_flare_gauss(x, params):
 
 from scipy.odr import ODR, Model, RealData
 
-def flare_fitter(data, continuum, flares, model='fred', use_odr=False):
+def flare_fitter(data, continuum, flares, model='fred', skip_mcmc=False):
     """ 
     Flare fitting function. Takes already found flare indices and models them.
 
@@ -106,12 +140,12 @@ def flare_fitter(data, continuum, flares, model='fred', use_odr=False):
             model_wrapper = fred_flare_wrapper
 
             # Parameter estimates.
-            t_peak = residuals['time'].iloc[peak]
-            tau = residuals['time'].iloc[start]
-            rise = t_peak - tau
-            decay = 2 * rise
+            t_max = residuals['time'].iloc[peak]
+            rise = t_max - residuals['time'].iloc[start]
+            decay = residuals['time'].iloc[end] - t_max
+            sharpness = decay/rise
             amplitude = residuals['flux'].iloc[peak]
-            input_par = [tau, rise, decay, amplitude]
+            input_par = [t_max, rise, decay, sharpness, amplitude]
 
         elif model == 'gauss':
             flare_model = gaussian_flare
@@ -132,7 +166,7 @@ def flare_fitter(data, continuum, flares, model='fred', use_odr=False):
         logger.debug(f"ODR Par: {odr_par}")
         logger.debug(f"ODR Err: {odr_err}")
 
-        if use_odr == False:
+        if skip_mcmc == True:
             # Attempt mcmc fitting routine.
             try:
                 mcmc_par, mcmc_err = fit_flare_mcmc(data_flare, input_par, odr_err)
