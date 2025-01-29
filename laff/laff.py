@@ -12,7 +12,8 @@ from intersect import intersection
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 from .flarefinding import flare_finding
-from .modelling import find_intial_fit, fit_continuum_mcmc, flare_fitter, broken_powerlaw, fred_flare, gaussian_flare, improved_end_time
+from .modelling import broken_powerlaw, find_afterglow_fit, calculate_afterglow_fluence
+from .modelling import flare_fitter, fred_flare, gaussian_flare, improved_end_time
 from .utility import check_data_input, calculate_fit_statistics, calculate_fluence, get_xlims
 
 # findFlares() -- locate the indices of flares in the lightcurve
@@ -77,71 +78,53 @@ def findFlares(data, algorithm='sequential'):
 ### CONTINUUM FITTING
 #################################################################################
 
-def fitContinuum(data: pd.DataFrame, flare_indices: list, count_ratio: float = 1, rich_output: bool = False, break_num: int = False) -> dict:
-    logger.debug(f"Starting fitContinuum")
+def fitAfterglow(data: pd.DataFrame, flare_indices: list[list[int]], *, errors_to_std: float = 1.0, count_flux_ratio: float = 1.0) -> dict:
+    """Fits the afterglow of the light curve with a series of broken power laws.
+
+    Args:
+        data (pd.DataFrame):
+            The dataset stored as a pandas dataframe.
+        flare_indices (list[list[int]]):
+            A nested list of 3 integers, the start/peak/end of flares as returned by laff.findFlares().
+        errors_to_std (float, optional):
+            The conversion factor to be applied to the x and y errors on data, the ODR fitter assumes there are 1-sigma standard deviations. Defaults to 1.0.
+        count_flux_ratio (float, optional):
+            The conversion factor to be applied to scale into flux, if the data provided is in count rate. Defaults to 1.0.
+
+    Raises:
+        ValueError: _description_
+        ValueError: _description_
+
+    Returns:
+        dict: _description_
+    """
+
+    logger.debug('fitAfterglow()')
 
     # Remove flare data.
     if flare_indices:
+        logger.debug('Removing indices of %s flares', len(flare_indices))
         for start, _, end in flare_indices:
             data = data.drop(index=range(start+1, end))
 
-    # Use ODR & AIC to find best number of powerlaw breaks.
-    initial_fit, initial_fit_err, initial_fit_stats = find_intial_fit(data, rich_output, break_num)
-    break_number = int((len(initial_fit-2)/2)-1)
+    afterglow_par, afterglow_err, afterglow_stats, breaknum = find_afterglow_fit(data, errors_to_std)
+    slopes     = list(afterglow_par[:breaknum+1])
+    slopes_err = list(afterglow_err[:breaknum+1])
+    breaks     = list(afterglow_par[breaknum+1:-1])
+    breaks_err = list(afterglow_err[breaknum+1:-1])
+    normal     = afterglow_par[-1]
+    normal_err = afterglow_err[-1]
 
-    # Try an MCMC fitting run.
-    try:
-        raise ValueError
-        final_par, final_err = fit_continuum_mcmc(data, break_number, initial_fit, initial_fit_err)
-    except ValueError:
-        final_par, final_err = initial_fit, initial_fit_err
-        logger.debug(f"MCMC failed, defaulting to ODR.")
-
-    # Calculate fit statistics.
-    final_fit_statistics = calculate_fit_statistics(data, broken_powerlaw, final_par)
-    odr_rchisq = initial_fit_stats['rchisq']
-    mcmc_rchisq = final_fit_statistics['rchisq']
-    logger.debug(f'ODR rchisq: {odr_rchisq}')
-    logger.debug(f'MCMC rchisq: {mcmc_rchisq}')
-
-    # Compare MCMC and ODR fits.
-    if mcmc_rchisq == 0 or mcmc_rchisq < 0.1 or mcmc_rchisq == np.inf or mcmc_rchisq == -np.inf:
-        logger.debug('MCMC appears to be bad, using ODR fit.')
-        final_par, final_err, final_fit_statistics = initial_fit, initial_fit_err, initial_fit_stats
-    elif abs(odr_rchisq-1) < abs(mcmc_rchisq-1):
-        if abs(odr_rchisq-1) < 1.3 * abs(mcmc_rchisq-1):
-            logger.debug("ODR better than MCMC, using ODR fit.")
-            final_par, final_err, final_fit_statistics = initial_fit, initial_fit_err, initial_fit_stats
-        else:
-            logger.debug("ODR better than MCMC fit, but not significantly enough.")
-
-    slopes = list(final_par[:break_number+1])
-    slopes_err = list(final_err[:break_number+1])
-    breaks = list(final_par[break_number+1:-1])
-    breaks_err = list(final_err[break_number+1:-1])
-    normal = final_par[-1]
-    normal_err = final_err[-1]
-
-    if break_number == 0:
-        breakpoints = [data.iloc[0].time, data.iloc[-1].time]
-    elif (data.iloc[0].time < breaks[0]) and (breaks[-1] < data.iloc[-1].time):
-        breakpoints = [data.iloc[0].time, *breaks, data.iloc[-1].time]
-    elif (data.iloc[0].time > breaks[0]):
-        breakpoints = [data.iloc[0].time, *breaks[1:], data.iloc[-1].time]
-    elif (breaks[-1] > data.iloc[-1].time):
-        breakpoints = [data.iloc[0].time, *breaks[:-1], data.iloc[-1].time]
-    else:
-        breakpoints = [data.iloc[0].time, *breaks[1:-1], data.iloc[-1].time]
-
-    continuum_fluence = np.sum([calculate_fluence(broken_powerlaw, final_par, breakpoints[i], breakpoints[i+1], count_ratio) for i in range(len(breakpoints)-1)])
+    # Calculate fluence.
+    afterglow_fluence = calculate_afterglow_fluence(data.iloc[0].time, data.iloc[-1].time, breaks, afterglow_par, count_flux_ratio)
 
     return {'parameters': {
-                'break_num': break_number,
+                'break_num': breaknum,
                 'slopes': slopes, 'slopes_err': slopes_err,
                 'breaks': breaks, 'breaks_err': breaks_err,
                 'normal': normal, 'normal_err': normal_err},
-            'fluence': continuum_fluence,
-            'fit_statistics': final_fit_statistics}
+            'fluence': afterglow_fluence,
+            'fit_statistics': afterglow_stats}
 
 #################################################################################
 ### FIT FLARES
@@ -182,7 +165,10 @@ def fitFlares(data, flares, continuum, count_ratio, flare_model='fred', skip_mcm
 ### FIT GRB LIGHTCURVE
 #################################################################################
 
-def fitGRB(data: pd.DataFrame, flare_algorithm: str = 'sequential', flare_model: str = 'fred', count_ratio: int = 1, rich_output: bool = False, skip_mcmc: bool = False, break_num=False):
+def fitGRB(data: pd.DataFrame, *,
+           flare_algorithm: str = 'sequential', flare_model: str = 'fred',
+           errors_to_std: float = 1.0, count_flux_ratio: float = 1.0,
+            rich_output: bool = False, skip_mcmc: bool = False, break_num=False):
     # flare_model - use a certain flare model
     # use_odr - force use odr, disregard mcmc fitting
     # force_breaks - force a certain break_num
@@ -194,8 +180,9 @@ def fitGRB(data: pd.DataFrame, flare_algorithm: str = 'sequential', flare_model:
         raise ValueError("check data failed")
 
     flare_indices = findFlares(data, algorithm=flare_algorithm) # Find flare deviations.
-    continuum = fitContinuum(data, flare_indices, count_ratio, rich_output, break_num) # Fit continuum.
-    flares = fitFlares(data, flare_indices, continuum, count_ratio, flare_model, skip_mcmc=skip_mcmc) # Fit flares.
+    continuum = fitAfterglow(data, flare_indices, errors_to_std=errors_to_std, count_flux_ratio=count_flux_ratio)
+    continuum = fitAfterglow(data, flare_indices, count_flux_ratio, rich_output, break_num) # Fit continuum.
+    flares = fitFlares(data, flare_indices, continuum, count_flux_ratio, flare_model, skip_mcmc=skip_mcmc) # Fit flares.
 
     logger.info(f"LAFF run finished.")
     return {'flares': flares, 'continuum': continuum}
