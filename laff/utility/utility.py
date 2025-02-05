@@ -10,9 +10,13 @@ PAR_NAMES_FLARE = ['t_start', 'rise', 'decay', 'amplitude']
 PAR_NAMES_CONTINUUM = ['break_num', 'slopes', 'slopes_err', 'breaks', 'breaks_err', 'normal', 'normal_err']
 STAT_NAMES_CONTINUUM = ['chisq', 'rchisq', 'n', 'npar', 'dof', 'deltaAIC']
 
-def calculate_fit_statistics(data, model, params):
+def calculate_fit_statistics(data, model, params, temp_flare_shell=False):
     
-    fitted_model = model(np.array(data.time), params)
+    if temp_flare_shell:
+        fitted_model = model(np.array(data.time), params)
+    else:
+        fitted_model = model(params, np.array(data.time))
+
     chisq = np.sum(((data.flux - fitted_model) ** 2) / (data.flux_perr ** 2))
     
     n = len(data.time)
@@ -56,7 +60,7 @@ def check_data_input(data):
 
     return True
 
-def calculate_fluence(model, params, start, stop):
+def calculate_fluence(model, params, start, stop, count_ratio):
     """Given some model and range, calculate the fluence."""
 
     range = np.logspace(np.log10(start), np.log10(stop), num=2500)
@@ -64,7 +68,7 @@ def calculate_fluence(model, params, start, stop):
     fluence = integrate.trapezoid(fitted_model, x=range)
     logger.debug('Fluence from %s to %s is %s', start, stop, fluence)
 
-    return fluence
+    return fluence * count_ratio
 
 def get_xlims(data):
     """Calculating xlimits for a log graph.
@@ -91,5 +95,3 @@ def get_xlims(data):
     upper_lim = highest_time_val + 10**(math.floor(np.log10(highest_time_val)))
 
     return lower_lim, upper_lim
-
-    
