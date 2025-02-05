@@ -12,23 +12,24 @@ logger = logging.getLogger('laff')
 #################################################################################
 
 def fred_flare(x, params):
+    # J. P. Norris et al., ‘Attributes of Pulses in Long Bright Gamma-Ray Bursts’, The Astrophysical Journal, vol. 459, p. 393, Mar. 1996, doi: 10.1086/176902.
+    
     x = np.array(x)
-    t_start = params[0]
+    t_max = params[0]
     rise = params[1]
     decay = params[2]
-    amplitude = params[3]
+    sharpness = params[3]
+    amplitude = params[4]
 
-    cond = x < t_start
-
-    model = amplitude * np.sqrt(np.exp(2*(rise/decay))) * np.exp(-(rise/(x-t_start))-((x-t_start)/decay))
-    model[np.where(cond)] = 0
+    model = amplitude * np.exp( -(abs(x - t_max) / rise) ** sharpness)
+    model[np.where(x > t_max)] = amplitude * np.exp( -(abs(x[np.where(x > t_max)] - t_max) / decay) ** sharpness)
 
     return model
 
 def fred_flare_wrapper(params, x):
     return fred_flare(x, params)
 
-def all_flares(x, params):
+def all_flares_fred(x, params):
     x = np.array(x)
 
     flare_params = [params[i:i+4] for i in range(0, len(params), 4)]
@@ -40,7 +41,68 @@ def all_flares(x, params):
         sum_all_flares = [prev + current for prev, current in zip(sum_all_flares, fit_flare)]
 
     return sum_all_flares
+
+
+
+def old_fred_flare(x, params):
+    x = np.array(x)
+    tau = params[0]
+    rise = params[1]
+    decay = params[2]
+    amplitude = params[3]
+
+    cond = x < tau  
+
+    model = amplitude * np.sqrt(np.exp(2*(rise/decay))) * np.exp(-(rise/(x-tau))-((x-tau)/decay))
+    model[np.where(cond)] = 0
+
+    return model
+
+def old_fred_flare_wrapper(params, x):
+    return old_fred_flare(x, params)
+
+def old_all_flares_fred(x, params):
+    x = np.array(x)
+
+    flare_params = [params[i:i+4] for i in range(0, len(params), 4)]
     
+    sum_all_flares = [0.0] * len(x)
+
+    for flare in flare_params:
+        fit_flare = old_fred_flare(x, flare)
+        sum_all_flares = [prev + current for prev, current in zip(sum_all_flares, fit_flare)]
+
+    return sum_all_flares
+
+#################################################################################
+### GAUSSIAN MODEL
+#################################################################################
+
+def gaussian_flare(x, params):
+    x = np.array(x)
+    centre = params[0]
+    height = params[1]
+    width = np.abs(params[2])
+
+    model = height * np.exp(-((x-centre)**2)/(2*(width**2)))
+
+    return model
+
+def gaussian_flare_wrapper(params, x):
+    return gaussian_flare(x, params)
+
+def all_flare_gauss(x, params):
+    x = np.array(x)
+
+    flare_params = [params[i:i+3] for i in range(0, len(params), 3)]
+    
+    sum_all_flares = [0.0] * len(x)
+
+    for flare in flare_params:
+        fit_flare = gaussian_flare(x, flare)
+        sum_all_flares = [prev + current for prev, current in zip(sum_all_flares, fit_flare)]
+
+    return sum_all_flares
 
 #################################################################################
 ### SCIPY.ODR FITTING
@@ -48,7 +110,7 @@ def all_flares(x, params):
 
 from scipy.odr import ODR, Model, RealData
 
-def flare_fitter(data, continuum, flares, use_odr=False):
+def flare_fitter(data, continuum, flares, model='fred', skip_mcmc=False):
     """ 
     Flare fitting function. Takes already found flare indices and models them.
 
@@ -58,8 +120,9 @@ def flare_fitter(data, continuum, flares, use_odr=False):
     """
     logger.info("Fitting flares...")
 
-    logger.debug("Calculating residuals")    
-    fitted_model = broken_powerlaw(data.time, continuum['parameters'])
+    logger.debug("Calculating residuals")   
+
+    fitted_model = broken_powerlaw(continuum['parameters'], data.time)
     residuals = data.copy()
     residuals['flux'] = data.flux - fitted_model
 
@@ -72,56 +135,83 @@ def flare_fitter(data, continuum, flares, use_odr=False):
         data_flare['flux'] = np.float64(0)
         data_flare.loc[start:end, 'flux'] = residuals.loc[start:end, 'flux']
 
-        # Parameter estimates.
-        t_peak = residuals['time'].iloc[peak]
-        t_start = residuals['time'].iloc[start]
-        rise = t_peak - t_start
-        # decay = (residuals['time'].iloc[end] - t_peak)
-        decay = 2 * rise
-        # amplitude = abs(residuals['flux'].iloc[peak] - residuals['flux'].iloc[start])
-        amplitude = residuals['flux'].iloc[peak]
-        input_par = [t_start, rise, decay, amplitude]
+        if model == 'fred':
+            flare_model = fred_flare
+            model_wrapper = fred_flare_wrapper
+
+            # Parameter estimates.
+            t_max = residuals['time'].iloc[peak]
+            rise = t_max - residuals['time'].iloc[start]
+            decay = residuals['time'].iloc[end] - t_max
+            sharpness = decay/rise
+            amplitude = residuals['flux'].iloc[peak]
+            input_par = [t_max, rise, decay, sharpness, amplitude]
+
+        elif model == 'gauss':
+            flare_model = gaussian_flare
+            model_wrapper = gaussian_flare_wrapper
+
+            # Parameter estimate.
+            centre = residuals['time'].iloc[peak]
+            height = residuals['flux'].iloc[peak]
+            width = residuals['time'].iloc[peak] - residuals['time'].iloc[start]
+            input_par = [centre, height, width]
 
         # Perform intial ODR fit.
         logger.debug(f"For flare indices {start}/{peak}/{end}:")
-        odr_par, odr_err = odr_fitter(data_flare, input_par)
-        odr_par = [abs(x) for x in odr_par]
-        odr_stats = calculate_fit_statistics(data, fred_flare, odr_par)
+        odr_par, odr_err = odr_fitter(data_flare, input_par, model_wrapper)
+        # odr_par = [abs(x) for x in odr_par]
+        odr_stats = calculate_fit_statistics(data, flare_model, odr_par, temp_flare_shell=True)
         odr_rchisq = odr_stats['rchisq']
         logger.debug(f"ODR Par: {odr_par}")
         logger.debug(f"ODR Err: {odr_err}")
 
-        # Attempt mcmc fitting routine.
-        try:
-            mcmc_par, mcmc_err = fit_flare_mcmc(data_flare, odr_par, odr_err)
-            mcmc_stats = calculate_fit_statistics(data, fred_flare, mcmc_par)
-            mcmc_rchisq = mcmc_stats['rchisq']
-            logger.debug(f"MCMC Par: {mcmc_par}")
-            logger.debug(f"MCMC Err: {mcmc_err}")
+        if skip_mcmc == True:
+            # Attempt mcmc fitting routine.
+            try:
+                mcmc_par, mcmc_err = fit_flare_mcmc(data_flare, input_par, odr_err)
+                mcmc_stats = calculate_fit_statistics(data, flare_model, mcmc_par)
+                mcmc_rchisq = mcmc_stats['rchisq']
+                logger.debug(f"MCMC Par: {mcmc_par}")
+                logger.debug(f"MCMC Err: {mcmc_err}")
 
-            # Check for bad MCMC.
-            if mcmc_rchisq == 0 or mcmc_rchisq < 0.1 or mcmc_rchisq == np.inf or mcmc_rchisq == -np.inf:
-                logger.debug(f'MCMC appears to be bad, using ODR fit for flare {start}-{end}.')
-                final_par, final_err, final_fit_statistics = odr_par, odr_err, odr_stats
-            # Compare the two models.
-            elif abs(odr_rchisq-1) < abs(mcmc_rchisq-1):
-                if abs(odr_rchisq) < 1.3 * abs(mcmc_rchisq-1):
-                    logger.debug(f"ODR better than MCMC for flare {start}-{end}, using ODR.")
+                # Check for bad MCMC.
+                if mcmc_rchisq == 0 or mcmc_rchisq < 0.1 or mcmc_rchisq == np.inf or mcmc_rchisq == -np.inf:
+                    logger.debug(f'MCMC appears to be bad, using ODR fit for flare {start}-{end}.')
                     final_par, final_err, final_fit_statistics = odr_par, odr_err, odr_stats
+                # Compare the two models.
+                elif abs(odr_rchisq-1) < abs(mcmc_rchisq-1):
+                    if abs(odr_rchisq) < 1.3 * abs(mcmc_rchisq-1):
+                        logger.debug(f"ODR better than MCMC for flare {start}-{end}, using ODR.")
+                        final_par, final_err, final_fit_statistics = odr_par, odr_err, odr_stats
+                    else:
+                        logger.debug(f"ODR better than MCMC fit for flare {start}-{end}, but not significantly enough.")
+                # Otherwise: mcmc.
                 else:
-                    logger.debug(f"ODR better than MCMC fit for flare {start}-{end}, but not significantly enough.")
-            # Otherwise: mcmc.
-            else:
-                logger.debug("Using MCMC fit.")
-                final_par, final_err, final_fit_statistics = mcmc_par, mcmc_err, mcmc_stats
-            
-        except ValueError:
-            logger.debug(f'MCMC failed - using ODR fit.')
+                    logger.debug("Using MCMC fit.")
+                    final_par, final_err, final_fit_statistics = mcmc_par, mcmc_err, mcmc_stats
+            except IndexError:
+                logger.debug(f"Using ODR fit - likely gaussian curve. Not implemented in MCMC yet.")
+                final_par, final_err = odr_par, odr_err
+            except ValueError:
+                logger.debug(f'MCMC failed - using ODR fit.')
+                final_par, final_err = odr_par, odr_err
+        else:
             final_par, final_err = odr_par, odr_err
 
+
         # Remove from residuals.
-        fitted_flare = fred_flare(data.time, final_par)
+        fitted_flare = flare_model(data.time, final_par)
         residuals['flux'] -= fitted_flare
+        
+        # import matplotlib.pyplot as plt
+        # import pandas as pd
+
+        # print(residuals[['time', 'flux']])
+        # plt.scatter(residuals.time, residuals.flux)
+        # plt.plot(residuals.time, fitted_flare)
+        # plt.semilogx()
+        # plt.show()
 
         logger.debug("Flare complete")
 
@@ -221,9 +311,9 @@ def improved_end_time(data, flare_indices, flare_par, continuum_par):
 ### FITTING METHODS
 #################################################################################
 
-def odr_fitter(data, inputpar):
+def odr_fitter(data, inputpar, model_wrapper):
     data = RealData(data.time, data.flux, data.time_perr, data.flux_perr)  
-    model = Model(fred_flare_wrapper)
+    model = Model(model_wrapper)
     odr = ODR(data, model, beta0=inputpar)
 
     odr.set_job(fit_type=0)
@@ -286,12 +376,12 @@ def fl_log_likelihood(params, x, y, x_err, y_err):
 
 def fl_log_prior(params, TIME_END):
 
-    t_start = params[0]
+    tau = params[0]
     rise = params[1]
     decay = params[2]
     amplitude = params[3]
 
-    if not (t_start > 0) and (t_start < TIME_END):
+    if not (tau > 0) and (tau < TIME_END):
         return -np.inf
 
     if rise < 0:

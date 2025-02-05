@@ -15,6 +15,10 @@ def lcimport(filepath, format="online_archive"):
     [Parameters]
         filepath (str):
             Filepath to lightcurve data.
+        format (str):
+            Format of incoming file.
+                - 'online_archive': .qdp from Swift online archive containing XRT data
+                - 'python_query': .qdp file generated through swifttools python modules containing BAT and XRT data.
             
     [Returns]
         data (pandas dataframe)

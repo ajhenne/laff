@@ -1,11 +1,12 @@
-from .fit_continuum import (
+from .fit_afterglow import (
  broken_powerlaw,
- find_intial_fit,
- fit_continuum_mcmc,
+ find_afterglow_fit,
+ calculate_afterglow_fluence
 )
 
 from .fit_flare import (
     fred_flare,
+    gaussian_flare,
     flare_fitter,
     improved_end_time
 )
