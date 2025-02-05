@@ -25,9 +25,9 @@ from .utility import check_data_input, calculate_fit_statistics, calculate_fluen
 #          -- this is what the user should be running
 #          -- outputs a dictionary with all useful statistics
 
-#################################################################################
+################################################################################
 ### LOGGER
-#################################################################################
+################################################################################
 
 logging_level = 'INFO'
 logger = logging.getLogger('laff')
@@ -41,7 +41,8 @@ def set_logging_level(level):
     """Set the desired logging level of the script.
 
     Args:
-        level (string): from least to most verbose - 'none', 'debug', 'info', 'warning', 'error', 'critical'. The default level is normal.
+        level (string): from least to most verbose - 'none', 'debug', 'info',
+        'warning', 'error', 'critical'. The default level is normal.
 
     Raises:
         ValueError: Invalid logging level.
@@ -57,9 +58,9 @@ def set_logging_level(level):
     else:
         raise ValueError("Invalid logging level. Please use 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL' or 'NONE'.")
 
-#################################################################################
+################################################################################
 ### FIND FLARES
-#################################################################################
+################################################################################
 
 def findFlares(data, algorithm='sequential'):
     """Identify flares within datasets."""
@@ -70,26 +71,29 @@ def findFlares(data, algorithm='sequential'):
 
     # Run flare finding.
     flares = flare_finding(data, algorithm)
-    logger.info(f"Found {len(flares)} flare(s).")
 
     return flares if len(flares) else False
 
-#################################################################################
+################################################################################
 ### CONTINUUM FITTING
-#################################################################################
+################################################################################
 
-def fitAfterglow(data: pd.DataFrame, flare_indices: list[list[int]], *, errors_to_std: float = 1.0, count_flux_ratio: float = 1.0) -> dict:
+def fitAfterglow(data: pd.DataFrame, flare_indices: list[list[int]] = None, *, errors_to_std: float = 1.0, count_flux_ratio: float = 1.0) -> dict:
     """Fits the afterglow of the light curve with a series of broken power laws.
 
     Args:
         data (pd.DataFrame):
             The dataset stored as a pandas dataframe.
         flare_indices (list[list[int]]):
-            A nested list of 3 integers, the start/peak/end of flares as returned by laff.findFlares().
+            A nested list of 3 integers, the start/peak/end of flares as
+            returned by laff.findFlares().
         errors_to_std (float, optional):
-            The conversion factor to be applied to the x and y errors on data, the ODR fitter assumes there are 1-sigma standard deviations. Defaults to 1.0.
+            The conversion factor to be applied to the x and y errors on data,
+            the ODR fitter assumes there are 1-sigma standard deviations.
+            Defaults to 1.0.
         count_flux_ratio (float, optional):
-            The conversion factor to be applied to scale into flux, if the data provided is in count rate. Defaults to 1.0.
+            The conversion factor to be applied to scale into flux, if the data
+            provided is in count rate. Defaults to 1.0.
 
     Raises:
         ValueError: _description_
@@ -108,6 +112,7 @@ def fitAfterglow(data: pd.DataFrame, flare_indices: list[list[int]], *, errors_t
             data = data.drop(index=range(start+1, end))
 
     afterglow_par, afterglow_err, afterglow_stats, breaknum = find_afterglow_fit(data, errors_to_std)
+
     slopes     = list(afterglow_par[:breaknum+1])
     slopes_err = list(afterglow_err[:breaknum+1])
     breaks     = list(afterglow_par[breaknum+1:-1])
@@ -116,7 +121,7 @@ def fitAfterglow(data: pd.DataFrame, flare_indices: list[list[int]], *, errors_t
     normal_err = afterglow_err[-1]
 
     # Calculate fluence.
-    afterglow_fluence = calculate_afterglow_fluence(data.iloc[0].time, data.iloc[-1].time, breaks, afterglow_par, count_flux_ratio)
+    afterglow_fluence = calculate_afterglow_fluence(data, breaknum, breaks, afterglow_par, count_flux_ratio)
 
     return {'parameters': {
                 'break_num': breaknum,
@@ -126,9 +131,9 @@ def fitAfterglow(data: pd.DataFrame, flare_indices: list[list[int]], *, errors_t
             'fluence': afterglow_fluence,
             'fit_statistics': afterglow_stats}
 
-#################################################################################
+################################################################################
 ### FIT FLARES
-#################################################################################
+################################################################################
 
 def fitFlares(data, flares, continuum, count_ratio, flare_model='fred', skip_mcmc=False):
 
@@ -161,9 +166,9 @@ def fitFlares(data, flares, continuum, count_ratio, flare_model='fred', skip_mcm
 
     return fittedFlares
 
-#################################################################################
+################################################################################
 ### FIT GRB LIGHTCURVE
-#################################################################################
+################################################################################
 
 def fitGRB(data: pd.DataFrame, *,
            flare_algorithm: str = 'sequential', flare_model: str = 'fred',
@@ -180,18 +185,17 @@ def fitGRB(data: pd.DataFrame, *,
         raise ValueError("check data failed")
 
     flare_indices = findFlares(data, algorithm=flare_algorithm) # Find flare deviations.
-    continuum = fitAfterglow(data, flare_indices, errors_to_std=errors_to_std, count_flux_ratio=count_flux_ratio)
-    continuum = fitAfterglow(data, flare_indices, count_flux_ratio, rich_output, break_num) # Fit continuum.
-    flares = fitFlares(data, flare_indices, continuum, count_flux_ratio, flare_model, skip_mcmc=skip_mcmc) # Fit flares.
+    afterglow = fitAfterglow(data, flare_indices, errors_to_std=errors_to_std, count_flux_ratio=count_flux_ratio) # Fit continuum.
+    flares = fitFlares(data, flare_indices, afterglow, count_flux_ratio, flare_model, skip_mcmc=skip_mcmc) # Fit flares.
 
     logger.info(f"LAFF run finished.")
-    return {'flares': flares, 'continuum': continuum}
+    return afterglow, flares
 
-#################################################################################
+################################################################################
 ### PLOTTING
-#################################################################################
+################################################################################
 
-def plotGRB(data, fitted_grb, show=True, save_path=None):
+def plotGRB(data, afterglow, flares, show=True, save_path=None):
     logger.info(f"Starting plotGRB.")
 
     plt.loglog()
@@ -211,30 +215,21 @@ def plotGRB(data, fitted_grb, show=True, save_path=None):
     plt.ylim(lower_flux, upper_flux)
     plt.xlim(get_xlims(data))
 
-    ## Go over this logic -- why?
-    if fitted_grb == None:
-        # Guard clause to just plot the light curve.
-        if show:
-            plt.show()
-            return
-        else:
-            return
-
     # For smooth plotting of fitted functions.
     max, min = np.log10(data['time'].iloc[0]), np.log10(data['time'].iloc[-1])
     constant_range = np.logspace(min, max, num=5000)
 
     # Plot continuum model.
     logger.debug('Plotting continuum model.')
-    fittedContinuum = broken_powerlaw(constant_range, fitted_grb['continuum']['parameters'])
+    fittedContinuum = broken_powerlaw(afterglow['parameters'], constant_range)
     total_model = fittedContinuum
     plt.plot(constant_range, fittedContinuum, color='c')
 
     # Overlay marked flares.
-    if fitted_grb['flares'] is not False:
+    if flares is not False:
         logger.debug("Plotting flare indices and models.")
 
-        for flare in fitted_grb['flares']:
+        for flare in flares:
             
             # Plot flare data.
             flare_data = data.iloc[flare['indices'][0]:flare['indices'][2]]
@@ -257,7 +252,7 @@ def plotGRB(data, fitted_grb, show=True, save_path=None):
 
     # Plot powerlaw breaks.
     logger.debug('Plotting powerlaw breaks.')
-    for x_pos in fitted_grb['continuum']['parameters']['breaks']:
+    for x_pos in afterglow['parameters']['breaks']:
         plt.axvline(x=x_pos, color='grey', linestyle='--', linewidth=0.5, zorder=0)
 
     if save_path:
