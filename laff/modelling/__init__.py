@@ -1,4 +1,4 @@
-from .fit_continuum import (
+from .fit_afterglow import (
  broken_powerlaw,
  find_afterglow_fit,
  calculate_afterglow_fluence

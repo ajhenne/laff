@@ -11,13 +11,21 @@ logger = logging.getLogger('laff')
 #################################################################################
 
 def broken_powerlaw(params, x):
-
-    n = (len(params)-2)/2
-
     x = np.array(x)
-    slopes = params[0:n+1]
-    breaks = params[n+1:-1]
-    norm   = params[-1]
+
+    if type(params) in (list, np.ndarray):
+        n = int((len(params)-2)/2)
+        slopes = params[0:n+1]
+        breaks = params[n+1:-1]
+        norm   = params[-1]
+    elif type(params) is dict:
+        n      = params['break_num']
+        slopes = params['slopes']
+        breaks = params['breaks']
+        norm   = params['normal']
+    else:
+        logger.critical('Input params not accepted type.')
+        raise TypeError(f'params is not dict/list -> {type(params)}')
 
     mask = []
 
@@ -42,7 +50,8 @@ def broken_powerlaw(params, x):
 def broken_powerlaw_wrapper(params, x):
     """Wrapper for ODR to fit log10 break times. Intended for internal use only."""
 
-    n = (len(params)-2)/2
+    n = int((len(params)-2)/2)
+    params = list(params)
     params[n+1:-1] = [10**val for val in params[n+1:-1]]
 
     return broken_powerlaw(params, x)
@@ -56,7 +65,7 @@ def odr_fitter(data, input_par, convert_to_std=1.0, t_max=0):
     """Fitting function for powerlaw."""
     data = RealData(data.time, data.flux, sx=data.time_perr*convert_to_std, sy=data.flux_perr*convert_to_std)
     model = Model(broken_powerlaw_wrapper)
-    n = (len(input_par)-2)/2
+    n = int((len(input_par)-2)/2)
 
     odr = ODR(data, model, beta0=input_par)
 
@@ -84,23 +93,28 @@ def find_afterglow_fit(data, conversion_to_std):
     for breaknum in range(0, 6):
 
         slope_guesses = [1.0] * (breaknum+1)
-        break_guesses = list(np.linspace(np.log10(data_start), np.log10(data_end, num=breaknum+2)))[1:-1]
+        break_guesses = list(np.linspace(np.log10(data_start), np.log10(data_end), num=breaknum+2))[1:-1]
         normal_guess  = [data['flux'].iloc[0] * data['time'].iloc[0]]
         input_par = slope_guesses + break_guesses + normal_guess
 
-        fit_par, fit_err = odr_fitter(data, input_par, n=breaknum, convert_to_std=conversion_to_std, t_max=data_end)
-        fit_stats = calculate_fit_statistics(data, broken_powerlaw, fit_par)
-        logger.debug('%s : %s / %s / %s', breaknum, fit_par, fit_err, fit_stats)
+        fit_par, fit_err = odr_fitter(data, input_par, convert_to_std=conversion_to_std, t_max=data_end)
+        
+        if list(fit_par[breaknum+1:-1]) != sorted(list(fit_par[breaknum+1:-1])):
+            fit_par[breaknum+1:-1] = sorted(list(fit_par[breaknum+1:-1]))
 
-        # Check breaks are in order - remove later.
-        if fit_par[breaknum+1:-1] != sorted(fit_par[breaknum+1:-1]):
-            raise ValueError("Out of order breaks.")
         fit_par[breaknum+1:-1] = [10**x for x in fit_par[breaknum+1:-1]]
+        
+        fit_stats = calculate_fit_statistics(data, broken_powerlaw, fit_par)
+        logger.debug('%s', breaknum)
+        logger.debug('%s', fit_par)
+        logger.debug('%s', fit_err)
+        logger.debug('%s', fit_stats)
+
 
         model_fits.append([fit_par, fit_err, fit_stats])
 
     best_fit, best_err, best_stats = min(model_fits, key=lambda x: x[2]['deltaAIC'])
-    breaknum = (len(fit_par)-2)/2
+    breaknum = int((len(best_fit)-2)/2)
     logger.info('Afterglow fitted with %s breaks.', breaknum)
 
     return best_fit, best_err, best_stats, breaknum
@@ -113,8 +127,10 @@ def find_afterglow_fit(data, conversion_to_std):
 def calculate_afterglow_fluence(data, breaknum, break_times, fit_par, count_to_flux_conversion):
 
     integral_boundaries = [data.iloc[0].time, *break_times, data.iloc[-1].time]
-    afterglow_fluence = np.sum([calculate_fluence(broken_powerlaw, fit_par, integral_boundaries[i], integral_boundaries[i+1]) for i in range(breaknum)])
-    afterglow_fluence *= count_to_flux_conversion
-    logger.info('Afterglow fluence calculated as %s', afterglow_fluence)
 
+    # afterglow_fluence = np.sum([calculate_fluence(broken_powerlaw, fit_par, integral_boundaries[i], integral_boundaries[i+1]) for i in range(breaknum)])
+    # afterglow_fluence *= count_to_flux_conversion
+    # logger.info('Afterglow fluence calculated as %s', afterglow_fluence)
+
+    afterglow_fluence = 0
     return afterglow_fluence

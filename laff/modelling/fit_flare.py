@@ -122,7 +122,7 @@ def flare_fitter(data, continuum, flares, model='fred', skip_mcmc=False):
 
     logger.debug("Calculating residuals")   
 
-    fitted_model = broken_powerlaw(data.time, continuum['parameters'])
+    fitted_model = broken_powerlaw(continuum['parameters'], data.time)
     residuals = data.copy()
     residuals['flux'] = data.flux - fitted_model
 
@@ -161,7 +161,7 @@ def flare_fitter(data, continuum, flares, model='fred', skip_mcmc=False):
         logger.debug(f"For flare indices {start}/{peak}/{end}:")
         odr_par, odr_err = odr_fitter(data_flare, input_par, model_wrapper)
         # odr_par = [abs(x) for x in odr_par]
-        odr_stats = calculate_fit_statistics(data, flare_model, odr_par)
+        odr_stats = calculate_fit_statistics(data, flare_model, odr_par, temp_flare_shell=True)
         odr_rchisq = odr_stats['rchisq']
         logger.debug(f"ODR Par: {odr_par}")
         logger.debug(f"ODR Err: {odr_err}")
