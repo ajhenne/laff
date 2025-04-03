@@ -30,6 +30,9 @@ def lcimport(filepath, format="online_archive"):
 
     elif format == "python_query":
         data = _swift_python_query(filepath)
+
+    elif format == "bat":
+        data = _bat_data(filepath)
     
     else:
         raise ValueError("Invalid format parameter.")
@@ -91,5 +94,24 @@ def _swift_python_query(data_filepath):
     data = data.sort_values(by=['col1'])
     data = data.reset_index(drop=True)
     data.columns = ['time', 'time_perr', 'time_nerr', 'flux', 'flux_perr', 'flux_nerr']
+
+    return data
+
+def _bat_data(data_filepath):
+    """Data obtained from lc observation files for BAT."""
+
+    df = pd.read_csv(data_filepath)
+
+    data = pd.DataFrame({
+        'time': df['TIME'],
+        'time_perr': 0,
+        'time_nerr': 0,
+        'flux': df['RATE'],
+        'flux_perr': df['ERROR'],
+        'flux_nerr': df['ERROR']
+    })
+
+    data = data.sort_values(by=['time'])
+    data = data.reset_index(drop=True)
 
     return data
