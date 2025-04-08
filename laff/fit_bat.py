@@ -4,6 +4,7 @@ import pandas as pd
 from scipy.signal import savgol_filter, find_peaks
 from scipy.ndimage import label
 from scipy.optimize import least_squares
+from scipy.stats import f
 
 from .modelling import fred_flare
 
@@ -11,22 +12,8 @@ from .modelling import fred_flare
 # FUNCTIONS
 ################################################################################
 
-def fred_flare(params, x):
+def fred_flares(params, x):
     # J. P. Norris et al., ‘Attributes of Pulses in Long Bright Gamma-Ray Bursts’, The Astrophysical Journal, vol. 459, p. 393, Mar. 1996, doi: 10.1086/176902.
-    
-    x = np.array(x)
-    t_max = params[0]
-    rise = params[1]
-    decay = params[2]
-    sharpness = params[3]
-    amplitude = params[4]
-
-    model = amplitude * np.exp( -(abs(x - t_max) / rise) ** sharpness)
-    model[np.where(x > t_max)] = amplitude * np.exp( -(abs(x[np.where(x > t_max)] - t_max) / decay) ** sharpness)
-
-    return model
-
-def fred_multiple(params, x):
 
     x = np.array(x)
 
@@ -45,14 +32,8 @@ def fred_multiple(params, x):
 
     return total_model
 
-def multiple_resids(params, x, y):
-    return fred_multiple(params, x) - y
-
-
-
-
-def flare_resids(params, x, y):
-    return fred_flare(params, x) - y
+def fred_resids(params, x, y):
+    return fred_flares(params, x) - y
 
 def simple_line(params, x):
     x = np.array(x)
@@ -130,6 +111,8 @@ def filter_data(data):
 
         flare_indices.append((a, b))
 
+    flare_indices = sorted(set(flare_indices))
+
     return data, flare_indices
 
 
@@ -147,9 +130,12 @@ def find_continuum(data, flare_indices):
     return continuum_fit
 
 
+################################################################################
+# FLARE FITTING
+################################################################################
+
 def fit_flares(data, flare_indices, continuum_fit):
 
-    continuum = simple_line(continuum_fit, data['time'])
     flare_data = data.copy()
     flare_data['flux'] -= flare_data['moving_std']
     flare_data['flux'] = flare_data['flux'].apply(lambda x: max(x, 0))
@@ -170,8 +156,12 @@ def fit_flares(data, flare_indices, continuum_fit):
 
             peaks = [found_peaks[i]+a for i in ranked_indices[:count_flare]]
 
-            if len(peaks) == 0:
+            if len(peaks) == 0 and count_flare == 1:
                 peaks = [data['savgol'].iloc[a:b].idxmax()]
+
+            if len(peaks) != count_flare:
+                add_flare = False
+                continue
 
             input_par = []
 
@@ -185,24 +175,37 @@ def fit_flares(data, flare_indices, continuum_fit):
 
                 input_par.extend((t_peak, rise, decay, sharp, amplitude))
             
-            bound_par = [data['time'].iloc[a], 0.0,            0.0,            1.0,  0.0   ] * count_flare, \
-                        [data['time'].iloc[b], 2*(rise+decay), 2*(rise+decay), 10.0, np.inf] * count_flare
+            bound_par = count_flare * [data['time'].iloc[a], 0.0,            0.0,            1.0,  0.0   ], \
+                        count_flare * [data['time'].iloc[b], 2*(rise+decay), 2*(rise+decay), 10.0, np.inf]
 
-            flare_fit = least_squares(multiple_resids, input_par, bounds=bound_par, args=(flare_data['time'], flare_data['flux'])).x
+            flare_fit = least_squares(fred_resids, input_par, bounds=bound_par, args=(flare_data['time'], flare_data['flux'])).x
 
-            rss = np.sum((data['savgol'] - fred_multiple(flare_fit, data['time'])) ** 2)
-            n = len(data['time'])
-            aic = (2 * len(input_par)) + (n * np.log(rss/n))
+            filt_data = data[data['flux'] != 0]
 
-            prev_fit = flare_fit
-            if aic < prev_aic:
-                prev_aic = aic
+            chi_2 = np.sum( ((filt_data['flux'] - fred_flares(flare_fit, filt_data['time']))**2) / (filt_data['flux_perr'] ** 2) )
+            dof_2 = len(data['flux']) - len(flare_fit)
+
+            if count_flare == 1:
+                chi_1 = chi_2
+                dof_1 = dof_2
                 count_flare += 1
+                prev_fit = flare_fit
+                continue
+
+            F = ((chi_1 - chi_2) / (dof_1 - dof_2)) / (chi_2/dof_2)
+            p_value = 1 - f.cdf(F, dof_1-dof_2, dof_2)
+            # print(count_flare, p_value)
+
+            if p_value < 0.0027:
+                chi_1 = chi_2
+                dof_1 = dof_2
+                count_flare += 1
+                prev_fit = flare_fit
             else:
                 flare_fit = prev_fit
                 add_flare = False
 
-        flare_data['flux'] -= fred_multiple(flare_fit, data['time'])
+        flare_data['flux'] -= fred_flares(flare_fit, data['time'])
         flare_data['flux'] = flare_data['flux'].apply(lambda x: max(x, 0))
 
         for i in range(0, len(flare_fit), 5):
@@ -231,6 +234,7 @@ def plotPrompt(prompt_fit, **kwargs):
         flare_fit
         total fit
         continuum
+        save
         TODO savepath
     """
 
@@ -277,7 +281,7 @@ def plotPrompt(prompt_fit, **kwargs):
             if residuals:
                 ax2.axvspan(data['time'].iloc[srt], data['time'].iloc[end], color='b', alpha=0.2)
 
-        flare_model = fred_flare(flare['parameters'], data['time'])
+        flare_model = fred_flares(flare['parameters'], data['time'])
         total_model += flare_model
 
         if kwargs.get('flare_fit', True):
@@ -297,6 +301,9 @@ def plotPrompt(prompt_fit, **kwargs):
 
     plt.xlabel('Time since trigger (seconds)')
     plt.ylabel('Count rate (/seconds)')
+
+    if (save_path := kwargs.get('save')):
+        plt.savefig(save_path + grb_name + '.png', bbox_inches='tight')
 
     if kwargs.get('show', True):
         plt.show()
