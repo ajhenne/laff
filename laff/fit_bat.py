@@ -6,8 +6,6 @@ from scipy.ndimage import label
 from scipy.optimize import least_squares
 from scipy.stats import f
 
-from .modelling import fred_flare
-
 ################################################################################
 # FUNCTIONS
 ################################################################################
@@ -35,13 +33,6 @@ def fred_flares(params, x):
 def fred_resids(params, x, y):
     return fred_flares(params, x) - y
 
-def simple_line(params, x):
-    x = np.array(x)
-    amplitude, slope = params
-    return amplitude + slope * x
-
-def line_resids(params, x, y):
-    return simple_line(params, x) - y
 
 ################################################################################
 # DATA FILTERING
@@ -51,11 +42,11 @@ def fitPrompt(data):
 
     data, flares = filter_data(data)
 
-    continuum = find_continuum(data, flares)
+    # continuum = find_continuum(data, flares)
 
-    flares = fit_flares(data, flares, continuum)
+    flares = fit_flares(data, flares)
 
-    return {'data': data, 'continuum': continuum, 'flares': flares}
+    return {'data': data, 'flares': flares}
 
 
 def filter_data(data):
@@ -116,33 +107,17 @@ def filter_data(data):
     return data, flare_indices
 
 
-def find_continuum(data, flare_indices):
-
-    data_continuum = data.copy()
-
-    # Filter flare regions.
-    for a, b in flare_indices:
-        data_continuum = data_continuum.drop([x for x in range(a, b+1)])
-
-    input_par = [np.average(data_continuum['flux']), 0.0]
-    continuum_fit = least_squares(line_resids, input_par, args=(data_continuum['time'], data_continuum['flux'])).x
-
-    return continuum_fit
-
-
 ################################################################################
 # FLARE FITTING
 ################################################################################
 
-def fit_flares(data, flare_indices, continuum_fit):
+def fit_flares(data, flare_indices):
 
     flare_data = data.copy()
     flare_data['flux'] -= flare_data['moving_std']
     flare_data['flux'] = flare_data['flux'].apply(lambda x: max(x, 0))
 
     flares = []
-
-    prev_aic = np.inf
 
     for a, b in flare_indices:
 
@@ -194,7 +169,6 @@ def fit_flares(data, flare_indices, continuum_fit):
 
             F = ((chi_1 - chi_2) / (dof_1 - dof_2)) / (chi_2/dof_2)
             p_value = 1 - f.cdf(F, dof_1-dof_2, dof_2)
-            # print(count_flare, p_value)
 
             if p_value < 0.0027:
                 chi_1 = chi_2
@@ -233,7 +207,6 @@ def plotPrompt(prompt_fit, **kwargs):
         flare_spans (bool): plot the flare spans, default true.
         flare_fit
         total fit
-        continuum
         save
         TODO savepath
     """
@@ -289,15 +262,8 @@ def plotPrompt(prompt_fit, **kwargs):
             if residuals:
                 ax2.plot(data['time'], flare_model, color='m', linewidth=0.5, linestyle='--')
 
-    continuum = simple_line(prompt_fit['continuum'], data['time'])
-    total_model += continuum
-
-    if kwargs.get('continuum'):
-        ax1.plot(data['time'], continuum, color='m', linewidth=0.5)
-
     if kwargs.get('total_fit', True):
         ax1.plot(data['time'], total_model, color='black', linewidth=0.7)
-
 
     plt.xlabel('Time since trigger (seconds)')
     plt.ylabel('Count rate (/seconds)')
