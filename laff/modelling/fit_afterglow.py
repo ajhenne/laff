@@ -68,17 +68,13 @@ def odr_fitter(data, input_par, convert_to_std=1.0, t_max=0):
     n = int((len(input_par)-2)/2)
 
     odr = ODR(data, model, beta0=input_par)
-
     output = odr.run()
 
     if output.info != 1:
         i = 1
-        while output.info != 1 and not all(output.beta[n+1:-1] > 0) and not all(output.beta[n+1:-1] < t_max):
-            # require 0 < break_time < t_max
+        while output.info != 1 and i < 100:
             output = odr.restart()
             i += 1
-            if i >= 100:
-                raise ValueError("ODR failed converge within bounds")
             
     return output.beta, output.sd_beta
 
@@ -105,16 +101,34 @@ def find_afterglow_fit(data, conversion_to_std):
         fit_par[breaknum+1:-1] = [10**x for x in fit_par[breaknum+1:-1]]
         
         fit_stats = calculate_fit_statistics(data, broken_powerlaw, fit_par)
-        logger.debug('%s', breaknum)
-        logger.debug('%s', fit_par)
-        logger.debug('%s', fit_err)
-        logger.debug('%s', fit_stats)
-
 
         model_fits.append([fit_par, fit_err, fit_stats])
 
     best_fit, best_err, best_stats = min(model_fits, key=lambda x: x[2]['deltaAIC'])
     breaknum = int((len(best_fit)-2)/2)
+
+    slopes = best_fit[0:breaknum+1]
+    breaks = best_fit[breaknum+1:-1]
+
+    if breaks[0] < data['time'].iloc[0]:
+        print('yes!')
+        breaks = breaks[1:]
+        slopes = slopes[1:]
+        breaknum -= 1
+
+    if breaks[-1] > data['time'].iloc[-1]:
+        breaks = breaks[:-1]
+        slopes = slopes[:-1]
+        breaknum -= 1
+
+    best_fit = list(slopes) + list(breaks) + [best_fit[-1]]
+
+    logger.debug('t_start\t%s', data['time'].iloc[0])
+    logger.debug('t_end\t%s', data['time'].iloc[-1])
+    logger.debug('brknum\t%s', breaknum)
+    logger.debug('slopes\t%s', list(round(x,2) for x in slopes))
+    logger.debug('breaks\t%s', list(round(x,2) for x in breaks))
+    logger.debug('norm\t%s', best_fit[-1])
     logger.info('Afterglow fitted with %s breaks.', breaknum)
 
     return best_fit, best_err, best_stats, breaknum
