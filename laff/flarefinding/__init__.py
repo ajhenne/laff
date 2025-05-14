@@ -1,2 +1,2 @@
 from .flarefinding import flare_finding
-from .algorithms import sequential, apply_filter
+from .algorithms import sequential, flares_savgol
