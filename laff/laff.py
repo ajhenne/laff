@@ -16,6 +16,11 @@ from .modelling import broken_powerlaw, find_afterglow_fit, calculate_afterglow_
 from .modelling import flare_fitter, fred_flare, gaussian_flare, improved_end_time
 from .utility import check_data_input, calculate_fit_statistics, calculate_fluence, get_xlims
 
+## recent note:
+## the conditions in fit_afterglow work but the fitter gets 'stuck' at that
+## value without changing input variables.
+## either remove conditions and filter after or find a force shuffle variables.
+
 # findFlares() -- locate the indices of flares in the lightcurve
 # fitContinuum(flare_indices) -- use the indices to exclude data, then fit the continuum
 # fitFlares(flares, continuum) -- use indices + continuum to fit the flares
@@ -62,7 +67,7 @@ def set_logging_level(level):
 ### FIND FLARES
 ################################################################################
 
-def findFlares(data, algorithm='sequential'):
+def findFlares(data, algorithm='sequential', **kwargs):
     """Identify flares within datasets."""
 
     logger.debug(f"Starting findFlares - method {algorithm}")
@@ -70,7 +75,7 @@ def findFlares(data, algorithm='sequential'):
         return  # First check input format is good.
 
     # Run flare finding.
-    flares = flare_finding(data, algorithm)
+    flares = flare_finding(data, algorithm, **kwargs)
 
     return flares if len(flares) else False
 
@@ -184,7 +189,7 @@ def fitGRB(data: pd.DataFrame, *,
     if check_data_input(data) == False:
         raise ValueError("check data failed")
 
-    flare_indices = findFlares(data, algorithm=flare_algorithm) # Find flare deviations.
+    flare_indices = findFlares(data, algorithm=flare_algorithm, savgol_len=False) # Find flare deviations.
     afterglow = fitAfterglow(data, flare_indices, errors_to_std=errors_to_std, count_flux_ratio=count_flux_ratio) # Fit continuum.
     flares = fitFlares(data, flare_indices, afterglow, count_flux_ratio, flare_model, skip_mcmc=skip_mcmc) # Fit flares.
 
@@ -195,10 +200,9 @@ def fitGRB(data: pd.DataFrame, *,
 ### PLOTTING
 ################################################################################
 
-def plotGRB(data, afterglow, flares, show=True, save_path=None):
+def plotGRB(data, afterglow, flares, show=True, save_path=None, bat=False):
     logger.info(f"Starting plotGRB.")
 
-    plt.loglog()
     plt.xlabel("Time (s)")
     plt.ylabel("Flux (units)")
 
@@ -210,10 +214,12 @@ def plotGRB(data, afterglow, flares, show=True, save_path=None):
                 yerr=[-data.flux_nerr, data.flux_perr], \
                 marker='', linestyle='None', capsize=0, zorder=1)
     
-    # Adjustments for xlims, ylims on a log graph.
-    upper_flux, lower_flux = data['flux'].max() * 10, data['flux'].min() * 0.1
-    plt.ylim(lower_flux, upper_flux)
-    plt.xlim(get_xlims(data))
+    if bat == False:
+        # Adjustments for xlims, ylims on a log graph.
+        upper_flux, lower_flux = data['flux'].max() * 10, data['flux'].min() * 0.1
+        plt.ylim(lower_flux, upper_flux)
+        plt.xlim(get_xlims(data))
+        plt.loglog()
 
     # For smooth plotting of fitted functions.
     max, min = np.log10(data['time'].iloc[0]), np.log10(data['time'].iloc[-1])
