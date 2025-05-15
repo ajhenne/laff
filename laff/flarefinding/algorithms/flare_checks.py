@@ -33,10 +33,13 @@ def check_slopes(data: pd.DataFrame, start: int, peak: int, decay: int) -> bool:
     rise_flux = data['flux'].iloc[start:peak+1]
     increase_fraction = np.sum(np.diff(rise_flux) > 0) / len(rise_flux)
 
-    decay_flux = data['flux'].iloc[peak:decay+1]
-    decrease_fraction = np.sum(np.diff(decay_flux) < 0) / len(decay_flux)
+    # decay_flux = data['flux'].iloc[peak:decay+1]
+    # decrease_fraction = np.sum(np.diff(decay_flux) < 0) / len(decay_flux)
 
-    return increase_fraction > increase_threshold and decrease_fraction > decrease_threshold
+    print(f'{increase_fraction=}')
+    # print(f'{decrease_fraction=}')
+
+    return increase_fraction > increase_threshold # `and decrease_fraction > decrease_threshold
 
 
 def check_above(data: pd.DataFrame, start: int, decay: int) -> bool:
