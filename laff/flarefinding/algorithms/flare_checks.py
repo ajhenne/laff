@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 logger = logging.getLogger('laff')
 
 
-def check_noise(data: pd.DataFrame, start: int, peak: int, test=False) -> bool:
+def check_noise(data: pd.DataFrame, start: int, peak: int, test=True) -> bool:
     """Flare rise must be greater than 4x the local noise."""
 
     flare_rise = data['flux'].iloc[peak] - data['flux'].iloc[start]
@@ -21,13 +21,13 @@ def check_noise(data: pd.DataFrame, start: int, peak: int, test=False) -> bool:
         print(f'{flare_rise=}')
         print(f'{noise_level=}')
 
-    return flare_rise > 4 * noise_level
+    return flare_rise > 3 * noise_level
 
 
 def check_slopes(data: pd.DataFrame, start: int, peak: int, decay: int) -> bool:
     """Check the fraction of increases/decreases during the rise and de cay, respectively."""
 
-    increase_threshold = 0.65
+    increase_threshold = 0.60
     decrease_threshold = 0.65
 
     rise_flux = data['flux'].iloc[start:peak+1]
@@ -39,7 +39,7 @@ def check_slopes(data: pd.DataFrame, start: int, peak: int, decay: int) -> bool:
     print(f'{increase_fraction=}')
     # print(f'{decrease_fraction=}')
 
-    return increase_fraction > increase_threshold # `and decrease_fraction > decrease_threshold
+    return increase_fraction >= increase_threshold # `and decrease_fraction > decrease_threshold
 
 
 def check_above(data: pd.DataFrame, start: int, decay: int) -> bool:
