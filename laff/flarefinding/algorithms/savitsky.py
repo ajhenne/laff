@@ -24,11 +24,8 @@ def flares_savgol(data, **kwargs) -> list:
 
     logger.debug("Starting sequential_findflares()")
 
-
-    if len(data.index) > 5000:
-        size = int(len(data.index) / 200)
-    elif len(data.index) > 7:
-        size = 7
+    if len(data.index) > 7:
+        size = 15
     else: size = 4
     
     if 'savgol_len' in kwargs:
@@ -51,9 +48,6 @@ def flares_savgol(data, **kwargs) -> list:
 
         search_start = n
         search_count = 0
-
-        if search_start == 18765:
-            pass
         
         # Run deviation check.
         if data.iloc[n+1].savgol > data.iloc[n].savgol:
@@ -78,10 +72,23 @@ def flares_savgol(data, **kwargs) -> list:
                 continue
 
         if search_count >= 2:
+
             logger.debug("Possible deviation from %s -> %s (t=%s)", search_start, search_start+search_count, data.iloc[search_start].time)
 
             start_point = find_start(data, search_start, prev_decay)
             peak_point = find_peak(data, start_point)
+
+            ## Quick rise check.
+            savgol_rise_start = data['savgol'].iloc[peak_point] > data['savgol'].iloc[start_point] + 2*(data['flux_perr'].iloc[start_point])
+            savgol_rise_before = data['savgol'].iloc[peak_point] > np.average(data['savgol'].iloc[max(start_point - 5, 0):start_point] + 2*(data['flux_perr'].iloc[max(start_point - 5, 0):start_point]))
+
+            if not savgol_rise_start and not savgol_rise_before:
+                print(f'{savgol_rise_start=}')
+                print(f'{savgol_rise_before=}')
+                logger.debug("Doesn't meet savgol rise condition")
+                n += 1
+                continue
+
             peak_point, decay_point = find_decay(data, start_point, peak_point)
 
             checks = [check_noise(data, start_point, peak_point),
@@ -211,6 +218,10 @@ def find_decay(data: pd.DataFrame, start: int, peak: int) -> int:
     while condition < 3:
         decay += 1
 
+        if data['flux'].iloc[decay] > data['flux'].iloc[start]:
+            condition = 0
+            continue
+
         # Boundary condition for end of data.
         if data.idxmax('index').time in [decay + i for i in range(-1,2)]:  # reach end of data
             logger.debug(f"Reached end of data, automatically ending flare at {decay + 1}")
@@ -225,10 +236,10 @@ def find_decay(data: pd.DataFrame, start: int, peak: int) -> int:
             continue
 
         # Condition for being greater than peak.
-        if data['savgol'].iloc[decay+1] > data['savgol'].iloc[peak]:
-            logger.debug("Has risen higher than the peak.")
-            condition = 3
-            continue
+        # if data['savgol'].iloc[decay+1] > data['savgol'].iloc[peak]:
+        #     logger.debug("Has risen higher than the peak.")
+        #     condition = 3
+        #     continue
 
         # Calculate gradients.
         NextAlong = calc_grad(data, decay, decay+1)
