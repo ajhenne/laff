@@ -222,7 +222,7 @@ def plotGRB(data, afterglow, flares, show=True, save_path=None, bat=False):
         plt.loglog()
 
     # For smooth plotting of fitted functions.
-    max, min = np.log10(data['time'].iloc[0]), np.log10(data['time'].iloc[-1])
+    max, min = np.log10(data['time'].iloc[0] - data['time_nerr'].iloc[0]), np.log10(data['time'].iloc[-1] + data['time_perr'].iloc[-1])
     constant_range = np.logspace(min, max, num=5000)
 
     # Plot continuum model.
