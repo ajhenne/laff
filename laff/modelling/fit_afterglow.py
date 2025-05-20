@@ -86,7 +86,7 @@ def find_afterglow_fit(data, data_flare):
             flare_limits = flare_y - broken_powerlaw(params, flare_x) # flares as upper lims
             return np.concatenate([ordered_breaks, flare_limits])
         
-        fit_par = fmin_slsqp(sum_residuals, input_par, bounds=bounds, f_ieqcons=all_constraints, args=(data.time, data.flux, data.flux_perr, data_flare[0], data_flare[1]), iter=500)
+        fit_par = fmin_slsqp(sum_residuals, input_par, bounds=bounds, f_ieqcons=all_constraints, args=(data.time, data.flux, data.flux_perr, data_flare[0], data_flare[1]), iter=500, iprint=0)
         fit_stats = calculate_fit_statistics(data, broken_powerlaw, fit_par)
         model_fits.append([fit_par, fit_stats])
         
