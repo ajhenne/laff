@@ -37,15 +37,15 @@ def broken_powerlaw(params, x):
 
     if n >= 0:
         model = norm * (x**(-slopes[0]))
-    if n >= 1:
+    if n >= 1 and mask[0].any():
         model[np.where(mask[0])] = norm * (x[np.where(mask[0])]**(-slopes[1])) * (breaks[0]**(-slopes[0]+slopes[1]))
-    if n >= 2:
+    if n >= 2 and mask[1].any():
         model[np.where(mask[1])] = norm * (x[np.where(mask[1])]**(-slopes[2])) * (breaks[0]**(-slopes[0]+slopes[1])) * (breaks[1]**(-slopes[1]+slopes[2]))
-    if n >= 3:
+    if n >= 3 and mask[2].any():
         model[np.where(mask[2])] = norm * (x[np.where(mask[2])]**(-slopes[3])) * (breaks[0]**(-slopes[0]+slopes[1])) * (breaks[1]**(-slopes[1]+slopes[2])) * (breaks[2]**(-slopes[2]+slopes[3]))
-    if n >= 4:
+    if n >= 4 and mask[3].any():
         model[np.where(mask[3])] = norm * (x[np.where(mask[3])]**(-slopes[4])) * (breaks[0]**(-slopes[0]+slopes[1])) * (breaks[1]**(-slopes[1]+slopes[2])) * (breaks[2]**(-slopes[2]+slopes[3])) * (breaks[3]**(-slopes[3]+slopes[4]))
-    if n >= 5:
+    if n >= 5 and mask[4].any():
         model[np.where(mask[4])] = norm * (x[np.where(mask[4])]**(-slopes[5])) * (breaks[0]**(-slopes[0]+slopes[1])) * (breaks[1]**(-slopes[1]+slopes[2])) * (breaks[2]**(-slopes[2]+slopes[3])) * (breaks[3]**(-slopes[3]+slopes[4])) * (breaks[4]**(-slopes[4]+slopes[5]))
 
     return model
