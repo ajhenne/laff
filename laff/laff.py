@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 from .flarefinding import flare_finding
 from .modelling import broken_powerlaw, find_afterglow_fit, calculate_afterglow_fluence
-from .modelling import flare_fitter, fred_flare, gaussian_flare, improved_end_time
+from .modelling import flare_fitter, package_flares, fred_flare
 from .utility import check_data_input, calculate_fit_statistics, calculate_fluence, get_xlims
 
 ## recent note:
@@ -146,7 +146,7 @@ def fitAfterglow(data: pd.DataFrame, flare_indices: list[list[int]] = None, *, e
 ### FIT FLARES
 ################################################################################
 
-def fitFlares(data, flare_indices, continuum, count_ratio, flare_model='fred', skip_mcmc=False):
+def fitFlares(data, flare_indices, continuum, *, count_ratio=1.0, flare_model='fred', skip_mcmc=False):
 
     if not flare_indices:
         return False
@@ -154,28 +154,12 @@ def fitFlares(data, flare_indices, continuum, count_ratio, flare_model='fred', s
     flare_model = fred_flare
 
     # Fit each flare.
-    flare_fits, flare_errs = flare_fitter(data, continuum, flare_indices, model=flare_model)
+    flare_fits, flare_stats, flare_errs = flare_fitter(data, continuum, flare_indices, model=flare_model)
 
     # Format, calculate times, fluence.
-    flaresDict = package_flares(flare_fits, flare_errs, flare_indices)
+    flaresDict = package_flares(data, flare_fits, flare_stats, flare_errs, flare_indices, count_ratio=count_ratio)
 
-    # Format into dictionary nicely.
-    fittedFlares = []
-    for indices, par, err in zip(flares, flare_fits, flare_errs):
-        # First run newly calculated end times.
-        # indices[2], new_end_time = improved_end_time(data, indices, par, continuum['parameters'])
-        times = [data.iloc[x].time for x in indices]
-        # times[2] = new_end_time
-        fluence_rise = calculate_fluence(model_flare, par, times[0], times[1], count_ratio)
-        fluence_decay = calculate_fluence(model_flare, par, times[1], times[2], count_ratio)
-        fluence_total = fluence_rise + fluence_decay
-
-        peak_flux = data.iloc[indices[1]].flux
-        peak_flux_err = data.iloc[indices[1]].flux_perr
-
-        fittedFlares.append({'times': times, 'indices': indices, 'flare_model': flare_model, 'par': par, 'par_err': err, 'fluence': [fluence_total, fluence_rise, fluence_decay], 'peak_flux': [peak_flux, peak_flux_err]})
-
-    return fittedFlares
+    return flaresDict
 
 ################################################################################
 ### FIT GRB LIGHTCURVE
