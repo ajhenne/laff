@@ -43,16 +43,16 @@ def flare_fitter(data, continuum, flares, model='fred'):
     
     """
 
-    import matplotlib.pyplot as plt ## temp
+    # import matplotlib.pyplot as plt ## temp
 
     logger.info("Fitting flares...")
 
-    data['residuals'] = data['flux'] - broken_powerlaw(continuum['parameters'], data['time'])
+    data['residuals'] = data['flux'] - broken_powerlaw(continuum['params'], data['time'])
 
-    plt.figure(figsize=(10,8))
-    plt.scatter(data.time, data.residuals, marker='.', color='grey')
-    plt.axhline(0, color='grey', linestyle='--')
-    plt.semilogx()
+    # plt.figure(figsize=(10,8))
+    # plt.scatter(data.time, data.residuals, marker='.', color='grey')
+    # plt.axhline(0, color='grey', linestyle='--')
+    # plt.semilogx()
 
     flareFits  = []
     flareStats = []
@@ -77,7 +77,7 @@ def flare_fitter(data, continuum, flares, model='fred'):
         fitted_flare = fmin_slsqp(sum_residuals, input_par, bounds=bounds, args=(data.time, data.residuals, data.flux_perr), iter=100)
 
         ## temp
-        plt.plot(data.time, fred_flare(fitted_flare, data.time))
+        # plt.plot(data.time, fred_flare(fitted_flare, data.time))
 
         fitted_stats = calculate_fit_statistics(data, fred_flare, fitted_flare)
 

@@ -134,7 +134,7 @@ def fitAfterglow(data: pd.DataFrame, flare_indices: list[list[int]] = None, *, e
     # Calculate fluence.
     afterglow_fluence = calculate_afterglow_fluence(data, breaknum, breaks, afterglow_par, count_flux_ratio)
 
-    return {'parameters': {
+    return {'params': {
                 'break_num': breaknum,
                 'slopes': slopes, 'slopes_err': slopes_err,
                 'breaks': breaks, 'breaks_err': breaks_err,
@@ -217,7 +217,7 @@ def plotGRB(data, afterglow, flares, show=True, save_path=None, bat=False):
 
     # Plot continuum model.
     logger.debug('Plotting continuum model.')
-    fittedContinuum = broken_powerlaw(afterglow['parameters'], constant_range)
+    fittedContinuum = broken_powerlaw(afterglow['params'], constant_range)
     total_model = fittedContinuum
     plt.plot(constant_range, fittedContinuum, color='c')
 
@@ -234,13 +234,9 @@ def plotGRB(data, afterglow, flares, show=True, save_path=None, bat=False):
                         yerr=[-flare_data.flux_nerr, flare_data.flux_perr], \
                         marker='', linestyle='None', capsize=0, color='r', zorder=2)
 
-            # Plot flare models.
-            if flare['flare_model'] == 'fred': plotting_model = fred_flare
-            if flare['flare_model'] == 'gauss': plotting_model = gaussian_flare
-
-            flare_model = plotting_model(constant_range, flare['par'])
+            flare_model = fred_flare(flare['params'], constant_range)
             total_model += flare_model
-            plt.plot(constant_range, plotting_model(constant_range, flare['par']), color='tab:green', linewidth=0.6, zorder=3)
+            plt.plot(constant_range, fred_flare(flare['params'], constant_range), color='tab:green', linewidth=0.6, zorder=3)
 
     # Plot total model.
     logger.debug('Plotting total model.')
@@ -248,7 +244,7 @@ def plotGRB(data, afterglow, flares, show=True, save_path=None, bat=False):
 
     # Plot powerlaw breaks.
     logger.debug('Plotting powerlaw breaks.')
-    for x_pos in afterglow['parameters']['breaks']:
+    for x_pos in afterglow['params']['breaks']:
         plt.axvline(x=x_pos, color='grey', linestyle='--', linewidth=0.5, zorder=0)
 
     if save_path:
