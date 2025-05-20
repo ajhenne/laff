@@ -2,8 +2,7 @@ import numpy as np
 import logging
 import emcee
 from scipy.optimize import fmin_slsqp
-from intersect import intersection
-from ..utility import calculate_fit_statistics, calculate_par_err
+from ..utility import calculate_fit_statistics, calculate_par_err, calculate_fluence 
 from ..modelling import broken_powerlaw
 
 logger = logging.getLogger('laff')
@@ -35,8 +34,6 @@ def sum_residuals(params, *args):
 ### SCIPY.ODR FITTING
 #################################################################################
 
-from scipy.odr import ODR, Model, RealData
-
 def flare_fitter(data, continuum, flares, model='fred'):
     """ 
     Flare fitting function. Takes already found flare indices and models them.
@@ -57,8 +54,9 @@ def flare_fitter(data, continuum, flares, model='fred'):
     plt.axhline(0, color='grey', linestyle='--')
     plt.semilogx()
 
-    flareFits = []
-    flareErrs = []
+    flareFits  = []
+    flareStats = []
+    flareErrs  = []
 
     for start, peak, end in flares:
 
@@ -74,12 +72,14 @@ def flare_fitter(data, continuum, flares, model='fred'):
         amplitude = data['flux'].iloc[peak]
         input_par = [t_peak, rise, decay, sharpness, amplitude]
 
-        bounds = [t_start, t_end], [0.0, t_end-t_start], [0.0, t_end-t_start], [0.0, 10.0], [0.0, np.inf]
+        bounds = [t_start, t_end], [0.0, t_end-t_start], [0.0, t_end-t_start], [1.0, 10.0], [0.0, np.inf]
 
         fitted_flare = fmin_slsqp(sum_residuals, input_par, bounds=bounds, args=(data.time, data.residuals, data.flux_perr), iter=100)
 
         ## temp
         plt.plot(data.time, fred_flare(fitted_flare, data.time))
+
+        fitted_stats = calculate_fit_statistics(data, fred_flare, fitted_flare)
 
         # get errors
         def chi2_wrapper(params):
@@ -93,6 +93,7 @@ def flare_fitter(data, continuum, flares, model='fred'):
         logger.debug('errors\t%s', list(round(x, 2) for x in param_errors))
 
         flareFits.append(list(fitted_flare))
+        flareStats.append(list(fitted_stats))
         flareErrs.append(list(param_errors))
 
     logger.info("Flare fitting complete for all flares.")
