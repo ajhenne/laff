@@ -10,16 +10,16 @@ PAR_NAMES_FLARE = ['t_start', 'rise', 'decay', 'amplitude']
 PAR_NAMES_CONTINUUM = ['break_num', 'slopes', 'slopes_err', 'breaks', 'breaks_err', 'normal', 'normal_err']
 STAT_NAMES_CONTINUUM = ['chisq', 'rchisq', 'n', 'npar', 'dof', 'deltaAIC']
 
-def calculate_fit_statistics(data, model, params, temp_flare_shell=False):
+def calculate_fit_statistics(data, model, params):
     
-    if temp_flare_shell:
-        fitted_model = model(np.array(data.time), params)
-    else:
-        fitted_model = model(params, np.array(data.time))
+    # if temp_flare_shell:
+        # fitted_model = model(np.array(data.time), params)
+    # else:
+        # fitted_model = model(params, np.array(data.time))
 
-    chisq = np.sum(((data.flux - fitted_model) ** 2) / (data.flux_perr ** 2))
+    chisq = np.sum(((data['flux'] - model(params, data['time'])) / data['flux_perr']) ** 2)  
     
-    n = len(data.time)
+    n = len(data['time'])
     npar = len(params)
     dof = n - npar
     r_chisq = chisq / dof
