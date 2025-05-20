@@ -65,7 +65,7 @@ def calculate_fluence(model, params, start, stop, count_ratio):
     """Given some model and range, calculate the fluence."""
 
     range = np.logspace(np.log10(start), np.log10(stop), num=2500)
-    fitted_model = model(range, params)
+    fitted_model = model(params, range)
     fluence = integrate.trapezoid(fitted_model, x=range)
     logger.debug('Fluence from %s to %s is %s', start, stop, fluence)
 
