@@ -113,13 +113,14 @@ def fitAfterglow(data: pd.DataFrame, flare_indices: list[list[int]] = None, *, e
     # Separate flare data.
     data_flare = [[], []]
     if flare_indices:
+        logger.debug('Removing indices of %s flares', len(flare_indices))
 
         for start, _, end in flare_indices:
-            data_flare[0].extend(data['time'].iloc[start:end+1])
-            data_flare[1].extend(data['flux'].iloc[start:end+1])
-        logger.debug('Removing indices of %s flares', len(flare_indices))
+            data_flare[0].extend(data['time'].iloc[start:end])
+            data_flare[1].extend(data['flux'].iloc[start:end])
+            
         for start, _, end in flare_indices:
-            data = data.drop(index=range(start+1, end))
+            data = data.drop(index=range(start, end))
 
     afterglow_par, afterglow_err, afterglow_stats, breaknum = find_afterglow_fit(data, data_flare, errors_to_std)
 
