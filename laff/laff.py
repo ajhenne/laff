@@ -228,7 +228,7 @@ def plotGRB(data, afterglow, flares, show=True, save_path=None, bat=False):
         for flare in flares:
             
             # Plot flare data.
-            flare_data = data.iloc[flare['indices'][0]:flare['indices'][2]]
+            flare_data = data.iloc[flare['indices'][0]:flare['indices'][2]+1]
             plt.errorbar(flare_data.time, flare_data.flux,
                         xerr=[-flare_data.time_nerr, flare_data.time_perr], \
                         yerr=[-flare_data.flux_nerr, flare_data.flux_perr], \
