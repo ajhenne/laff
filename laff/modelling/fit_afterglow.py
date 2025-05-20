@@ -80,7 +80,7 @@ def find_afterglow_fit(data, data_flare, conversion_to_std):
         if breaknum == 0:
             bounds = ([-0.5, 3.0], [0, np.inf])
         else:
-            bounds = tuple([[-0.5, 3.0]] * (breaknum + 1) + [[np.log10(data_start), np.log10(data_end)]] * breaknum + [[0, np.inf]])
+            bounds = tuple([[-0.5, 3.0]] * (breaknum + 1) + [[np.log10(data['time'].iloc[1]), np.log10(data['time'].iloc[-2])]] * breaknum + [[0, np.inf]])
         
         def all_constraints(params, *args):
             _, _, _, flare_x, flare_y = args
@@ -90,9 +90,9 @@ def find_afterglow_fit(data, data_flare, conversion_to_std):
             ordered = np.diff(breaks) - 1e-5
 
             # flares as upper lims
-            upperlims = flare_y - broken_powerlaw(params, flare_x)
+            flarelims = flare_y - broken_powerlaw(params, flare_x)
 
-            return np.concatenate([ordered, upperlims])
+            return np.concatenate([ordered, flarelims])
         
         # fit = fmin_slsqp(sum_residuals, input_par, f_ieqcons=upper_lims)
         fit, fx, its, imode, smode = fmin_slsqp(sum_residuals, input_par, bounds=bounds, f_ieqcons=all_constraints, args=(data.time, data.flux, data.flux_perr, data_flare[0], data_flare[1]), full_output=True)
@@ -102,11 +102,12 @@ def find_afterglow_fit(data, data_flare, conversion_to_std):
         max, min = np.log10(data['time'].iloc[0] - data['time_nerr'].iloc[0]), np.log10(data['time'].iloc[-1] + data['time_perr'].iloc[-1])
         constant_range = np.logspace(min, max, num=5000)
 
-        plt.scatter(data['time'], data['flux'], marker='o', color='grey')
+        # plt.figure(figsize=(10,8))
+        plt.errorbar(data['time'], data['flux'], xerr=[-data.time_nerr, data.time_perr], yerr=[-data.flux_nerr, data.flux_perr], linestyle='None', marker='', color='grey')
         plt.scatter(data_flare[0], data_flare[1], marker='.', color='red', alpha=0.5)
         plt.plot(constant_range, broken_powerlaw(fit, constant_range), label=breaknum)
-        for brk in fit[breaknum+1:-1]:
-            plt.axvline(10**brk, linewidth='--')
+        # for brk in fit[breaknum+1:-1]:
+            # plt.axvline(10**brk, linestyle='--')
         plt.loglog()
         plt.show()
         #### temp
@@ -120,14 +121,7 @@ def find_afterglow_fit(data, data_flare, conversion_to_std):
 
         # model_fits.append([fit_par, fit_err, fit_stats])
 
-        # # temp
-        # if breaknum == 1:
-        #     temp_fit = [fit_par, fit_err, fit_stats]
-
     best_fit, best_err, best_stats = min(model_fits, key=lambda x: x[2]['deltaAIC'])
-
-    # temp
-    best_fit, best_err, best_stats = temp_fit
 
     print(best_fit)
     print('')
