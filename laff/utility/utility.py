@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import scipy.integrate as integrate
+from scipy.optimize import approx_fprime
 import math
 import logging
 
@@ -95,3 +96,24 @@ def get_xlims(data):
     upper_lim = highest_time_val + 10**(math.floor(np.log10(highest_time_val)))
 
     return lower_lim, upper_lim
+
+def calculate_par_err(params, chi_wrapper):
+
+    epsilon=1e-5
+    n = len(params)
+    hessian = np.zeros((n, n))
+    chi_square = chi_wrapper(params)
+
+    for i in range(n):
+        # vary
+        x1 = np.array(params, copy=True)
+        x1[i] += epsilon
+        grad1 = approx_fprime(x1, chi_wrapper, epsilon)
+        x1[i] -= 2 * epsilon
+        grad2 = approx_fprime(x1, chi_wrapper, epsilon)
+        hessian[:, i] = (grad1 - grad2) / (2 * epsilon)
+
+    covariance_matrix = np.linalg.inv(hessian)
+    errors = np.sqrt(np.diag(covariance_matrix))
+
+    return 3 * errors

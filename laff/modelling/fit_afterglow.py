@@ -1,7 +1,7 @@
 import numpy as np
 import logging
-from scipy.optimize import fmin_slsqp, approx_fprime
-from ..utility import calculate_fit_statistics, calculate_fluence
+from scipy.optimize import fmin_slsqp
+from ..utility import calculate_fit_statistics, calculate_par_err
 
 import matplotlib.pyplot as plt
 
@@ -96,29 +96,11 @@ def find_afterglow_fit(data, data_flare):
     best_fit, best_stats = min(model_fits, key=lambda x: x[1]['deltaAIC'])
     breaknum = int((len(best_fit)-2)/2)
 
-    # Estimate parameter errors
-    def hessian(f, x0, epsilon=1e-5):
-        n = len(x0)
-        hess = np.zeros((n, n))
-        fx = f(x0)
-
-        for i in range(n):
-            x1 = np.array(x0, copy=True)
-            x1[i] += epsilon
-            grad1 = approx_fprime(x1, f, epsilon)
-            x1[i] -= 2 * epsilon
-            grad2 = approx_fprime(x1, f, epsilon)
-            hess[:, i] = (grad1 - grad2) / (2 * epsilon)
-            
-        return hess
-
     def chi2_wrapper(params):
         return sum_residuals(params, data['time'], data['flux'], data['flux_perr'], 1, 1)
     
-    hess = hessian(chi2_wrapper, fit_par)
-    cov = np.linalg.inv(hess)
-    param_errors = np.sqrt(np.diag(cov))
-
+    param_errors = calculate_par_err(best_fit, chi2_wrapper)
+    
     logger.info('Afterglow fitted with %s breaks.', breaknum)
     logger.debug('slopes\t%s', list(round(x,2) for x in best_fit[0:breaknum+1]))
     logger.debug('slopes_err\t%s', list(round(x,2) for x in param_errors[0:breaknum+1]))
