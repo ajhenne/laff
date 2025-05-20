@@ -99,21 +99,24 @@ def get_xlims(data):
 
 def calculate_par_err(params, chi_wrapper):
 
-    epsilon=1e-5
+    epsilon = [max(x * 1e-4, 1e-8) for x in params]
     n = len(params)
     hessian = np.zeros((n, n))
-    chi_square = chi_wrapper(params)
 
     for i in range(n):
         # vary
         x1 = np.array(params, copy=True)
-        x1[i] += epsilon
+        x1[i] = params[i] + epsilon[i]
         grad1 = approx_fprime(x1, chi_wrapper, epsilon)
-        x1[i] -= 2 * epsilon
+        x1[i] = params[i] - epsilon[i]
         grad2 = approx_fprime(x1, chi_wrapper, epsilon)
-        hessian[:, i] = (grad1 - grad2) / (2 * epsilon)
+        hessian[:, i] = (grad1 - grad2) / (2 * epsilon[i])
 
-    covariance_matrix = np.linalg.inv(hessian)
+    try:
+        covariance_matrix = np.linalg.inv(hessian)
+    except np.linalg.LinAlgError:
+        covariance_matrix = np.linalg.pinv(hessian) # Moore–Penrose pseudo-inverse
+        logger.warning("\tusing pseudo inverse cov matrix - par likely poorly constrained")
     errors = np.sqrt(np.diag(covariance_matrix))
 
     return 3 * errors
