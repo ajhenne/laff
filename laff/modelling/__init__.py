@@ -7,5 +7,5 @@ from .fit_afterglow import (
 from .fit_flare import (
     fred_flare,
     flare_fitter,
-    improved_end_time
+    package_flares
 )
