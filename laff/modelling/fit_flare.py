@@ -1,8 +1,9 @@
 import numpy as np
 import logging
 import emcee
+from scipy.optimize import fmin_slsqp
 from intersect import intersection
-from ..utility import calculate_fit_statistics
+from ..utility import calculate_fit_statistics, calculate_par_err
 from ..modelling import broken_powerlaw
 
 logger = logging.getLogger('laff')
@@ -11,7 +12,7 @@ logger = logging.getLogger('laff')
 ### FRED MODEL
 #################################################################################
 
-def fred_flare(x, params):
+def fred_flare(params, x):
     # J. P. Norris et al., ‘Attributes of Pulses in Long Bright Gamma-Ray Bursts’, The Astrophysical Journal, vol. 459, p. 393, Mar. 1996, doi: 10.1086/176902.
     
     x = np.array(x)
@@ -36,7 +37,7 @@ def sum_residuals(params, *args):
 
 from scipy.odr import ODR, Model, RealData
 
-def flare_fitter(data, continuum, flares, model='fred', skip_mcmc=False):
+def flare_fitter(data, continuum, flares, model='fred'):
     """ 
     Flare fitting function. Takes already found flare indices and models them.
 
@@ -44,105 +45,55 @@ def flare_fitter(data, continuum, flares, model='fred', skip_mcmc=False):
       - 
     
     """
+
+    import matplotlib.pyplot as plt ## temp
+
     logger.info("Fitting flares...")
 
-    logger.debug("Calculating residuals")   
+    data['residuals'] = data['flux'] - broken_powerlaw(continuum['parameters'], data['time'])
 
-    fitted_model = broken_powerlaw(continuum['parameters'], data.time)
-    residuals = data.copy()
-    residuals['flux'] = data.flux - fitted_model
+    plt.figure(figsize=(10,8))
+    plt.scatter(data.time, data.residuals, marker='.', color='grey')
+    plt.axhline(0, color='grey', linestyle='--')
+    plt.semilogx()
 
     flareFits = []
     flareErrs = []
 
     for start, peak, end in flares:
 
-        data_flare = data.copy()
-        data_flare['flux'] = np.float64(0)
-        data_flare.loc[start:end, 'flux'] = residuals.loc[start:end, 'flux']
+        t_start = data['time'].iloc[start]
+        t_peak = data['time'].iloc[peak]
+        t_end = data['time'].iloc[end]
 
-        if model == 'fred':
-            flare_model = fred_flare
-            model_wrapper = fred_flare_wrapper
+        # Parameter guesses.
+        t_peak = t_peak
+        rise  = (t_peak - t_start) / 4
+        decay = (t_end - t_peak) / 2
+        sharpness = decay / rise
+        amplitude = data['flux'].iloc[peak]
+        input_par = [t_peak, rise, decay, sharpness, amplitude]
 
-            # Parameter estimates.
-            t_max = residuals['time'].iloc[peak]
-            rise = t_max - residuals['time'].iloc[start]
-            decay = residuals['time'].iloc[end] - t_max
-            sharpness = decay/rise
-            amplitude = residuals['flux'].iloc[peak]
-            input_par = [t_max, rise, decay, sharpness, amplitude]
+        bounds = [t_start, t_end], [0.0, t_end-t_start], [0.0, t_end-t_start], [0.0, 10.0], [0.0, np.inf]
 
-        elif model == 'gauss':
-            flare_model = gaussian_flare
-            model_wrapper = gaussian_flare_wrapper
+        fitted_flare = fmin_slsqp(sum_residuals, input_par, bounds=bounds, args=(data.time, data.residuals, data.flux_perr), iter=100)
 
-            # Parameter estimate.
-            centre = residuals['time'].iloc[peak]
-            height = residuals['flux'].iloc[peak]
-            width = residuals['time'].iloc[peak] - residuals['time'].iloc[start]
-            input_par = [centre, height, width]
+        ## temp
+        plt.plot(data.time, fred_flare(fitted_flare, data.time))
 
-        # Perform intial ODR fit.
-        logger.debug(f"For flare indices {start}/{peak}/{end}:")
-        odr_par, odr_err = odr_fitter(data_flare, input_par, model_wrapper)
-        # odr_par = [abs(x) for x in odr_par]
-        odr_stats = calculate_fit_statistics(data, flare_model, odr_par, temp_flare_shell=True)
-        odr_rchisq = odr_stats['rchisq']
-        logger.debug(f"ODR Par: {odr_par}")
-        logger.debug(f"ODR Err: {odr_err}")
-
-        if skip_mcmc == True:
-            # Attempt mcmc fitting routine.
-            try:
-                mcmc_par, mcmc_err = fit_flare_mcmc(data_flare, input_par, odr_err)
-                mcmc_stats = calculate_fit_statistics(data, flare_model, mcmc_par)
-                mcmc_rchisq = mcmc_stats['rchisq']
-                logger.debug(f"MCMC Par: {mcmc_par}")
-                logger.debug(f"MCMC Err: {mcmc_err}")
-
-                # Check for bad MCMC.
-                if mcmc_rchisq == 0 or mcmc_rchisq < 0.1 or mcmc_rchisq == np.inf or mcmc_rchisq == -np.inf:
-                    logger.debug(f'MCMC appears to be bad, using ODR fit for flare {start}-{end}.')
-                    final_par, final_err, final_fit_statistics = odr_par, odr_err, odr_stats
-                # Compare the two models.
-                elif abs(odr_rchisq-1) < abs(mcmc_rchisq-1):
-                    if abs(odr_rchisq) < 1.3 * abs(mcmc_rchisq-1):
-                        logger.debug(f"ODR better than MCMC for flare {start}-{end}, using ODR.")
-                        final_par, final_err, final_fit_statistics = odr_par, odr_err, odr_stats
-                    else:
-                        logger.debug(f"ODR better than MCMC fit for flare {start}-{end}, but not significantly enough.")
-                # Otherwise: mcmc.
-                else:
-                    logger.debug("Using MCMC fit.")
-                    final_par, final_err, final_fit_statistics = mcmc_par, mcmc_err, mcmc_stats
-            except IndexError:
-                logger.debug(f"Using ODR fit - likely gaussian curve. Not implemented in MCMC yet.")
-                final_par, final_err = odr_par, odr_err
-            except ValueError:
-                logger.debug(f'MCMC failed - using ODR fit.')
-                final_par, final_err = odr_par, odr_err
-        else:
-            final_par, final_err = odr_par, odr_err
-
-
-        # Remove from residuals.
-        fitted_flare = flare_model(data.time, final_par)
-        residuals['flux'] -= fitted_flare
+        # get errors
+        def chi2_wrapper(params):
+            return sum_residuals(params, data['time'], data['residuals'], data['flux_perr'])
+        param_errors = calculate_par_err(fitted_flare, chi2_wrapper)
         
-        # import matplotlib.pyplot as plt
-        # import pandas as pd
+        data['residuals'] = data['residuals'] - fred_flare(fitted_flare, data.time)
 
-        # print(residuals[['time', 'flux']])
-        # plt.scatter(residuals.time, residuals.flux)
-        # plt.plot(residuals.time, fitted_flare)
-        # plt.semilogx()
-        # plt.show()
+        logger.debug(f"Flare {start}/{peak}/{end} fitted")
+        logger.debug('params\t%s', list(round(x, 2) for x in fitted_flare))
+        logger.debug('errors\t%s', list(round(x, 2) for x in param_errors))
 
-        logger.debug("Flare complete")
-
-        flareFits.append(list(final_par))
-        flareErrs.append(list(final_err))
+        flareFits.append(list(fitted_flare))
+        flareErrs.append(list(param_errors))
 
     logger.info("Flare fitting complete for all flares.")
     return flareFits, flareErrs
