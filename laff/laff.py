@@ -122,7 +122,7 @@ def fitAfterglow(data: pd.DataFrame, flare_indices: list[list[int]] = None, *, e
         for start, _, end in flare_indices:
             data = data.drop(index=range(start, end))
 
-    afterglow_par, afterglow_err, afterglow_stats, breaknum = find_afterglow_fit(data, data_flare, errors_to_std)
+    afterglow_par, afterglow_err, afterglow_stats, breaknum = find_afterglow_fit(data, data_flare)
 
     slopes     = list(afterglow_par[:breaknum+1])
     slopes_err = list(afterglow_err[:breaknum+1])
@@ -146,18 +146,18 @@ def fitAfterglow(data: pd.DataFrame, flare_indices: list[list[int]] = None, *, e
 ### FIT FLARES
 ################################################################################
 
-def fitFlares(data, flares, continuum, count_ratio, flare_model='fred', skip_mcmc=False):
+def fitFlares(data, flare_indices, continuum, count_ratio, flare_model='fred', skip_mcmc=False):
 
-    if not flares:
+    if not flare_indices:
         return False
     
-    if flare_model == 'fred':
-        model_flare = fred_flare
-    elif flare_model == 'gauss':
-        model_flare = gaussian_flare
+    flare_model = fred_flare
 
     # Fit each flare.
-    flare_fits, flare_errs = flare_fitter(data, continuum, flares, model=flare_model, skip_mcmc=skip_mcmc)
+    flare_fits, flare_errs = flare_fitter(data, continuum, flare_indices, model=flare_model)
+
+    # Format, calculate times, fluence.
+    flaresDict = package_flares(flare_fits, flare_errs, flare_indices)
 
     # Format into dictionary nicely.
     fittedFlares = []
