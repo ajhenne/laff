@@ -154,7 +154,7 @@ def fitFlares(data, flare_indices, continuum, *, count_ratio=1.0, flare_model='f
     flare_model = fred_flare
 
     # Fit each flare.
-    flare_fits, flare_stats, flare_errs = flare_fitter(data, continuum, flare_indices, model=flare_model)
+    flare_fits, flare_stats, flare_errs, flare_indices = flare_fitter(data, continuum, flare_indices, model=flare_model)
 
     # Format, calculate times, fluence.
     flaresDict = package_flares(data, flare_fits, flare_stats, flare_errs, flare_indices, count_ratio=count_ratio)
@@ -228,7 +228,7 @@ def plotGRB(data, afterglow, flares, show=True, save_path=None, bat=False):
         for flare in flares:
             
             # Plot flare data.
-            flare_data = data.iloc[flare['indices'][0]:flare['indices'][2]]
+            flare_data = data.iloc[flare['indices'][0]:flare['indices'][2]+1]
             plt.errorbar(flare_data.time, flare_data.flux,
                         xerr=[-flare_data.time_nerr, flare_data.time_perr], \
                         yerr=[-flare_data.flux_nerr, flare_data.flux_perr], \

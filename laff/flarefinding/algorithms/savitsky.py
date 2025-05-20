@@ -44,8 +44,6 @@ def flares_savgol(data, **kwargs) -> list:
 
     while n < final_index:
 
-        logger.debug(f"Looking at index {n}")
-
         search_start = n
         search_count = 0
         
@@ -83,8 +81,6 @@ def flares_savgol(data, **kwargs) -> list:
             savgol_rise_before = data['savgol'].iloc[peak_point] > np.average(data['savgol'].iloc[max(start_point - 5, 0):start_point] + 2*(data['flux_perr'].iloc[max(start_point - 5, 0):start_point]))
 
             if not savgol_rise_start and not savgol_rise_before:
-                print(f'{savgol_rise_start=}')
-                print(f'{savgol_rise_before=}')
                 logger.debug("Doesn't meet savgol rise condition")
                 n += 1
                 continue
@@ -95,13 +91,13 @@ def flares_savgol(data, **kwargs) -> list:
                       check_slopes(data, start_point, peak_point, decay_point),
                       check_above(data, start_point, decay_point)]
                     #   check_variance(data, peak_point, decay_point)]    
-            logger.debug(f"Checks: {checks}")
+            logger.debug(f"\tChecks: {checks}")
 
             if all(checks):
                 check_variance(data, peak_point, decay_point)
-                check_noise(data, start_point, peak_point, test=True)
+                check_noise(data, start_point, peak_point)
                 FLARES.append([start_point, peak_point, decay_point])
-                logger.debug(f"Confirmed flare::  {start_point, peak_point, decay_point}")
+                logger.debug(f"\tconfirmed flare::  {start_point, peak_point, decay_point}")
                 n = decay_point
                 prev_decay = decay_point
                 continue
@@ -130,7 +126,7 @@ def find_start(data: pd.DataFrame, start: int, prev_decay: int) -> int:
 
         if bottom_next < top_prev:
             minimum = start + 1
-            logger.debug(f"Flare start found at {minimum}")
+            logger.debug("\tflare start found at %s (t=%s)", minimum, data['time'].iloc[minimum])
             return minimum
 
     if start < 3:
@@ -140,7 +136,7 @@ def find_start(data: pd.DataFrame, start: int, prev_decay: int) -> int:
     minimum = data[data.flux == min(points.flux)].index.values[0]
     minimum = prev_decay if (minimum < prev_decay) else minimum
 
-    logger.debug(f"Flare start found at {minimum}")
+    logger.debug(f"\tflare start found at {minimum}")
     return minimum
 
 
@@ -168,13 +164,12 @@ def find_peak(data, start):
         points = data.iloc[start+1:len(data.index)]
         maximum = data[data.flux == max(points.flux)].index.values[0]
 
-        logger.debug(f"Flare peak found at {maximum} - using end of data cutoff.")
+        logger.debug(f"\tFlare peak found at {maximum} - using end of data cutoff.")
         return maximum
 
     i = 1
 
     while next_chunk > prev_chunk:
-        logger.debug(f"Looking at chunk i={i} : {(start+1)+(chunksize*i)}->{(start+1+4)+(chunksize*i)}")
         # Next chunk interation.
         i += 1
         prev_chunk = next_chunk
@@ -186,7 +181,7 @@ def find_peak(data, start):
         points = data.iloc[start:(start+1+chunksize)+(chunksize*i)]
         maximum = data[data.flux == max(points.flux)].index.values[0]
 
-    logger.debug(f"Flare peak found at {maximum}")
+    logger.debug("\tFlare peak found at %s (t=%s)", maximum, data['time'].iloc[maximum])
     return maximum
 
 
@@ -205,7 +200,7 @@ def find_decay(data: pd.DataFrame, start: int, peak: int) -> int:
     condition = 0
     # decaypar = 2.5
 
-    logger.debug(f"Looking for decay")
+    logger.debug("\tlooking for decay")
 
     def calc_grad(data: pd.DataFrame, idx1: int, idx2: int, peak: bool = False) -> int:
         """Calculate gradient between first (idx1) and second (idx2) points."""
@@ -218,10 +213,6 @@ def find_decay(data: pd.DataFrame, start: int, peak: int) -> int:
     while condition < 3:
         decay += 1
 
-        if data['flux'].iloc[decay] > data['flux'].iloc[start]:
-            condition = 0
-            continue
-
         # Boundary condition for end of data.
         if data.idxmax('index').time in [decay + i for i in range(-1,2)]:  # reach end of data
             logger.debug(f"Reached end of data, automatically ending flare at {decay + 1}")
@@ -231,15 +222,14 @@ def find_decay(data: pd.DataFrame, start: int, peak: int) -> int:
 
         # Condition for large orbital gaps.
         if (data['time'].iloc[decay+1] - data['time'].iloc[decay]) > (data['time'].iloc[decay] - data['time'].iloc[peak]) * 3:
-            logger.debug(f"Gap between {decay}->{decay+1} is greater than {peak}->{decay} * 10")
+            logger.debug(f"Gap between {decay}->{decay+1} is greater than {peak}->{decay} * 3")
             condition = 3
             continue
 
-        # Condition for being greater than peak.
-        # if data['savgol'].iloc[decay+1] > data['savgol'].iloc[peak]:
-        #     logger.debug("Has risen higher than the peak.")
-        #     condition = 3
-        #     continue
+        # Prevent early ending - should decay to below start.
+        if data['flux'].iloc[decay] > data['flux'].iloc[start]:
+            condition = 0 # should this always be the case?
+            continue
 
         # Calculate gradients.
         NextAlong = calc_grad(data, decay, decay+1)
@@ -283,8 +273,7 @@ def find_decay(data: pd.DataFrame, start: int, peak: int) -> int:
         if (data['savgol'].iloc[decay] > data['flux'].iloc[start]):
             condition = 0
 
-
-    logger.debug(f"Decay end found at {decay}")
+    logger.debug("\tdecay found at %s (t=%s)", decay, data['time'].iloc[decay])
 
     # Adjust end for local minima.
     decay = data[data.flux == min(data.iloc[decay-1:decay+1].flux)].index.values[0]

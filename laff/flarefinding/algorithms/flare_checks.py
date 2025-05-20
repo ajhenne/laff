@@ -9,20 +9,13 @@ import matplotlib.pyplot as plt
 logger = logging.getLogger('laff')
 
 
-def check_noise(data: pd.DataFrame, start: int, peak: int, test=True) -> bool:
+def check_noise(data: pd.DataFrame, start: int, peak: int) -> bool:
     """Flare rise must be greater than 4x the local noise."""
 
     flare_rise = data['flux'].iloc[peak] - data['flux'].iloc[start]
     noise_level = np.average(data['flux_perr'].iloc[start:peak])
 
-    if test == True:
-        print(f'{start=}')
-        print(f'{peak=}')
-        print(f'{flare_rise=}')
-        print(f'{noise_level=}')
-
     return flare_rise > 3 * noise_level
-
 
 def check_slopes(data: pd.DataFrame, start: int, peak: int, decay: int) -> bool:
     """Check the fraction of increases/decreases during the rise and de cay, respectively."""
@@ -36,9 +29,7 @@ def check_slopes(data: pd.DataFrame, start: int, peak: int, decay: int) -> bool:
     # decay_flux = data['flux'].iloc[peak:decay+1]
     # decrease_fraction = np.sum(np.diff(decay_flux) < 0) / len(decay_flux)
 
-    print(f'{increase_fraction=}')
-    # print(f'{decrease_fraction=}')
-
+    return True
     return increase_fraction >= increase_threshold # `and decrease_fraction > decrease_threshold
 
 
@@ -66,7 +57,7 @@ def check_above(data: pd.DataFrame, start: int, decay: int) -> bool:
     points_above = sum(flux > (norm*time**alpha) for flux, time in zip(data['flux'].iloc[start:decay], data['time'].iloc[start:decay]))
     num_points = len(data['flux'].iloc[start:decay])
 
-    logger.debug(f"points above/num_points => {points_above}/{num_points} = {points_above/num_points}")
+    logger.debug(f"\tpoints above/num_points => {points_above}/{num_points} = {points_above/num_points}")
 
     return points_above/num_points > above_threshold
 
@@ -91,6 +82,5 @@ def check_variance(data: pd.DataFrame, peak: int, decay: int) -> bool:
     decay_flux = data['flux'].iloc[peak:decay+1]
     peak_flux  = data['flux'].iloc[peak]
     variance = np.var(decay_flux) / peak_flux
-    # print(variance) ####################################
 
     return variance < variance_threshold
