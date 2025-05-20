@@ -26,83 +26,9 @@ def fred_flare(x, params):
 
     return model
 
-def fred_flare_wrapper(params, x):
-    return fred_flare(x, params)
-
-def all_flares_fred(x, params):
-    x = np.array(x)
-
-    flare_params = [params[i:i+4] for i in range(0, len(params), 4)]
-    
-    sum_all_flares = [0.0] * len(x)
-
-    for flare in flare_params:
-        fit_flare = fred_flare(x, flare)
-        sum_all_flares = [prev + current for prev, current in zip(sum_all_flares, fit_flare)]
-
-    return sum_all_flares
-
-
-
-def old_fred_flare(x, params):
-    x = np.array(x)
-    tau = params[0]
-    rise = params[1]
-    decay = params[2]
-    amplitude = params[3]
-
-    cond = x < tau  
-
-    model = amplitude * np.sqrt(np.exp(2*(rise/decay))) * np.exp(-(rise/(x-tau))-((x-tau)/decay))
-    model[np.where(cond)] = 0
-
-    return model
-
-def old_fred_flare_wrapper(params, x):
-    return old_fred_flare(x, params)
-
-def old_all_flares_fred(x, params):
-    x = np.array(x)
-
-    flare_params = [params[i:i+4] for i in range(0, len(params), 4)]
-    
-    sum_all_flares = [0.0] * len(x)
-
-    for flare in flare_params:
-        fit_flare = old_fred_flare(x, flare)
-        sum_all_flares = [prev + current for prev, current in zip(sum_all_flares, fit_flare)]
-
-    return sum_all_flares
-
-#################################################################################
-### GAUSSIAN MODEL
-#################################################################################
-
-def gaussian_flare(x, params):
-    x = np.array(x)
-    centre = params[0]
-    height = params[1]
-    width = np.abs(params[2])
-
-    model = height * np.exp(-((x-centre)**2)/(2*(width**2)))
-
-    return model
-
-def gaussian_flare_wrapper(params, x):
-    return gaussian_flare(x, params)
-
-def all_flare_gauss(x, params):
-    x = np.array(x)
-
-    flare_params = [params[i:i+3] for i in range(0, len(params), 3)]
-    
-    sum_all_flares = [0.0] * len(x)
-
-    for flare in flare_params:
-        fit_flare = gaussian_flare(x, flare)
-        sum_all_flares = [prev + current for prev, current in zip(sum_all_flares, fit_flare)]
-
-    return sum_all_flares
+def sum_residuals(params, *args):
+    x, y, y_err = args
+    return np.sum(((y - fred_flare(params, x)) / y_err) ** 2)
 
 #################################################################################
 ### SCIPY.ODR FITTING
