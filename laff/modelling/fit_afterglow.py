@@ -94,6 +94,7 @@ def find_afterglow_fit(data, data_flare):
 
     # Assess best fit.
     best_fit, best_stats = min(model_fits, key=lambda x: x[1]['deltaAIC'])
+    breaknum = int((len(best_fit)-2)/2)
 
     # Estimate parameter errors
     def hessian(f, x0, epsilon=1e-5):
