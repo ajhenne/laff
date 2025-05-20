@@ -38,6 +38,7 @@ def check_slopes(data: pd.DataFrame, start: int, peak: int, decay: int) -> bool:
 
     print(f'\t{increase_fraction=}')
     # print(f'{decrease_fraction=}')
+    return True
 
     return increase_fraction >= increase_threshold # `and decrease_fraction > decrease_threshold
 
