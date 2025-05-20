@@ -44,8 +44,6 @@ def flares_savgol(data, **kwargs) -> list:
 
     while n < final_index:
 
-        logger.debug(f"Looking at index {n}")
-
         search_start = n
         search_count = 0
         
@@ -95,7 +93,7 @@ def flares_savgol(data, **kwargs) -> list:
                       check_slopes(data, start_point, peak_point, decay_point),
                       check_above(data, start_point, decay_point)]
                     #   check_variance(data, peak_point, decay_point)]    
-            logger.debug(f"Checks: {checks}")
+            logger.debug(f"\tChecks: {checks}")
 
             if all(checks):
                 check_variance(data, peak_point, decay_point)
@@ -130,7 +128,7 @@ def find_start(data: pd.DataFrame, start: int, prev_decay: int) -> int:
 
         if bottom_next < top_prev:
             minimum = start + 1
-            logger.debug(f"Flare start found at {minimum}")
+            logger.debug(f"\tFlare start found at {minimum}")
             return minimum
 
     if start < 3:
@@ -168,13 +166,12 @@ def find_peak(data, start):
         points = data.iloc[start+1:len(data.index)]
         maximum = data[data.flux == max(points.flux)].index.values[0]
 
-        logger.debug(f"Flare peak found at {maximum} - using end of data cutoff.")
+        logger.debug(f"\tFlare peak found at {maximum} - using end of data cutoff.")
         return maximum
 
     i = 1
 
     while next_chunk > prev_chunk:
-        logger.debug(f"Looking at chunk i={i} : {(start+1)+(chunksize*i)}->{(start+1+4)+(chunksize*i)}")
         # Next chunk interation.
         i += 1
         prev_chunk = next_chunk
@@ -186,7 +183,7 @@ def find_peak(data, start):
         points = data.iloc[start:(start+1+chunksize)+(chunksize*i)]
         maximum = data[data.flux == max(points.flux)].index.values[0]
 
-    logger.debug(f"Flare peak found at {maximum}")
+    logger.debug("Flare peak found at %s (t=%s)", maximum, data['time'].iloc[maximum])
     return maximum
 
 
@@ -283,8 +280,7 @@ def find_decay(data: pd.DataFrame, start: int, peak: int) -> int:
         if (data['savgol'].iloc[decay] > data['flux'].iloc[start]):
             condition = 0
 
-
-    logger.debug(f"Decay end found at {decay}")
+    logger.debug("Decay found at %s (t=%s)", decay, data['time'].iloc[decay])
 
     # Adjust end for local minima.
     decay = data[data.flux == min(data.iloc[decay-1:decay+1].flux)].index.values[0]

@@ -154,7 +154,7 @@ def fitFlares(data, flare_indices, continuum, *, count_ratio=1.0, flare_model='f
     flare_model = fred_flare
 
     # Fit each flare.
-    flare_fits, flare_stats, flare_errs = flare_fitter(data, continuum, flare_indices, model=flare_model)
+    flare_fits, flare_stats, flare_errs, flare_indices = flare_fitter(data, continuum, flare_indices, model=flare_model)
 
     # Format, calculate times, fluence.
     flaresDict = package_flares(data, flare_fits, flare_stats, flare_errs, flare_indices, count_ratio=count_ratio)
