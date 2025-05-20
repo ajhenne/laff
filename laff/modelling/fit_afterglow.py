@@ -1,7 +1,9 @@
 import numpy as np
 import logging
-from scipy.optimize import fmin_slsqp
-# from ..utility import calculate_fit_statistics, calculate_fluence
+from scipy.optimize import fmin_slsqp, approx_fprime
+from ..utility import calculate_fit_statistics, calculate_fluence
+
+import matplotlib.pyplot as plt
 
 logger = logging.getLogger('laff')
 
@@ -62,99 +64,99 @@ def find_afterglow_fit(data, data_flare, conversion_to_std):
 
     model_fits = []
 
-    ## temp
-    import matplotlib.pyplot as plt
-
     logger.debug('breaknum : fit_par / fit_err / fit_stats')
     for breaknum in range(0, 6):
 
         # Guess parameters.
         slope_guesses = [1.0] * (breaknum+1)
         break_guesses = list(np.linspace(np.log10(data_start), np.log10(data_end), num=breaknum+2))[1:-1]
-        # break_guesses = list(np.logspace(np.log10(data_start), np.log10(data_end), num=breaknum+2))[1:-1]
         normal_guess  = [data['flux'].iloc[0]]
         input_par = slope_guesses + break_guesses + normal_guess
 
         # Parameter bounds.
-
         if breaknum == 0:
-            bounds = ([-0.5, 3.0], [0, np.inf])
+            bounds = ([-1.0, 6.0], [0, np.inf])
         else:
-            bounds = tuple([[-0.5, 3.0]] * (breaknum + 1) + [[np.log10(data['time'].iloc[1]), np.log10(data['time'].iloc[-2])]] * breaknum + [[0, np.inf]])
+            bounds = tuple([[-1.0, 6.0]] * (breaknum + 1) + [[np.log10(data['time'].iloc[0])+0.05, np.log10(data['time'].iloc[-1])-0.05]] * breaknum + [[0, np.inf]])
         
         def all_constraints(params, *args):
             _, _, _, flare_x, flare_y = args
-
-            # order breaks
-            breaks = params[breaknum+1:-1]
-            ordered = np.diff(breaks) - 1e-5
-
-            # flares as upper lims
-            flarelims = flare_y - broken_powerlaw(params, flare_x)
-
-            return np.concatenate([ordered, flarelims])
+            ordered_breaks = np.diff(params[breaknum+1:-1]) - 0.05 # order breaks
+            flare_limits = flare_y - broken_powerlaw(params, flare_x) # flares as upper lims
+            return np.concatenate([ordered_breaks, flare_limits])
         
-        # fit = fmin_slsqp(sum_residuals, input_par, f_ieqcons=upper_lims)
-        fit, fx, its, imode, smode = fmin_slsqp(sum_residuals, input_par, bounds=bounds, f_ieqcons=all_constraints, args=(data.time, data.flux, data.flux_perr, data_flare[0], data_flare[1]), full_output=True)
+        fit_par = fmin_slsqp(sum_residuals, input_par, bounds=bounds, f_ieqcons=all_constraints, args=(data.time, data.flux, data.flux_perr, data_flare[0], data_flare[1]), iter=300)
 
+        #### temp ####################################################################################
 
-        #### temp
-        max, min = np.log10(data['time'].iloc[0] - data['time_nerr'].iloc[0]), np.log10(data['time'].iloc[-1] + data['time_perr'].iloc[-1])
-        constant_range = np.logspace(min, max, num=5000)
+        lower_time = min(data['time'].iloc[0] - data['time_nerr'].iloc[0], data_flare[0][0])
+        upper_time = max(data['time'].iloc[-1] + data['time_perr'].iloc[-1], data_flare[0][-1])
+        constant_range = np.logspace(np.log10(lower_time), np.log10(upper_time), num=5000)
 
-        # plt.figure(figsize=(10,8))
+        plt.figure(figsize=(10,8))
         plt.errorbar(data['time'], data['flux'], xerr=[-data.time_nerr, data.time_perr], yerr=[-data.flux_nerr, data.flux_perr], linestyle='None', marker='', color='grey')
         plt.scatter(data_flare[0], data_flare[1], marker='.', color='red', alpha=0.5)
-        plt.plot(constant_range, broken_powerlaw(fit, constant_range), label=breaknum)
-        # for brk in fit[breaknum+1:-1]:
-            # plt.axvline(10**brk, linestyle='--')
+        plt.plot(constant_range, broken_powerlaw(fit_par, constant_range), label=breaknum)
+        for brk in fit_par[breaknum+1:-1]:
+            plt.axvline(10**brk, linestyle='--')
         plt.loglog()
-        plt.show()
-        #### temp
 
-    #### temp
-    plt.legend()
+        #### temp ####################################################################################
 
-        # fit_par[breaknum+1:-1] = [10**x for x in fit_par[breaknum+1:-1]]
+        fit_stats = calculate_fit_statistics(data, broken_powerlaw, fit_par)
+        model_fits.append([fit_par, fit_stats])
+        print('deltaAIC=',fit_stats['deltaAIC'])
         
-        # fit_stats = calculate_fit_statistics(data, broken_powerlaw, fit_par)
+        fit_par[breaknum+1:-1] = [10**x for x in fit_par[breaknum+1:-1]]
+        plt.close()
+        ####
 
-        # model_fits.append([fit_par, fit_err, fit_stats])
+    # Assess best fit.
+    best_fit, best_stats = min(model_fits, key=lambda x: x[1]['deltaAIC'])
 
-    best_fit, best_err, best_stats = min(model_fits, key=lambda x: x[2]['deltaAIC'])
-
-    print(best_fit)
-    print('')
-    print('')
-    print('')
+    ##temp
     breaknum = int((len(best_fit)-2)/2)
 
+    plt.plot(constant_range, broken_powerlaw(best_fit, constant_range), linewidth=3, label=breaknum)
+    plt.legend()
+    plt.xlim(data_start, data_end)
+    plt.show()
+    # Estimate parameter errors
+    def hessian(f, x0, epsilon=1e-5):
+        n = len(x0)
+        hess = np.zeros((n, n))
+        fx = f(x0)
+
+        for i in range(n):
+            x1 = np.array(x0, copy=True)
+            x1[i] += epsilon
+            grad1 = approx_fprime(x1, f, epsilon)
+            x1[i] -= 2 * epsilon
+            grad2 = approx_fprime(x1, f, epsilon)
+            hess[:, i] = (grad1 - grad2) / (2 * epsilon)
+            
+        return hess
+
+    def chi2_wrapper(params):
+        return sum_residuals(params, data['time'], data['flux'], data['flux_perr'], 1, 1)
+    
+    hess = hessian(chi2_wrapper, fit_par)
+    cov = np.linalg.inv(hess)
+    param_errors = np.sqrt(np.diag(cov))
+
+    breaknum = int((len(best_fit)-2)/2)
     slopes = best_fit[0:breaknum+1]
-    print(slopes)
     breaks = best_fit[breaknum+1:-1]
-    print(breaks)
-
-    if breaknum != 0:
-        if breaks[0] < data['time'].iloc[0]:
-            print('yes!')
-            # breaks = breaks[1:]
-            # slopes = slopes[1:]
-            # breaknum -= 1
-
-        while breaks[-1] > data['time'].iloc[-1]:
-            breaks = breaks[:-1]
-            slopes = slopes[:-1]
-            breaknum -= 1
-
     best_fit = list(slopes) + list(breaks) + [best_fit[-1]]
 
-    logger.debug('t_start\t%s', data['time'].iloc[0])
-    logger.debug('t_end\t%s', data['time'].iloc[-1])
-    logger.debug('brknum\t%s', breaknum)
+    slopes_errors = param_errors[0:breaknum+1]
+    breaks_errors = param_errors[breaknum+1:-1]
+    best_err = list(slopes_errors) + list(breaks_errors) + [param_errors[-1]]
+
+    logger.info('Afterglow fitted with %s breaks.', breaknum)
     logger.debug('slopes\t%s', list(round(x,2) for x in slopes))
     logger.debug('breaks\t%s', list(round(x,2) for x in breaks))
     logger.debug('norm\t%s', best_fit[-1])
-    logger.info('Afterglow fitted with %s breaks.', breaknum)
 
     return best_fit, best_err, best_stats, breaknum
 
