@@ -1,8 +1,7 @@
 import numpy as np
 import logging
-from scipy.odr import ODR, Model, RealData
-
-from ..utility import calculate_fit_statistics, calculate_fluence
+from scipy.optimize import fmin_slsqp
+# from ..utility import calculate_fit_statistics, calculate_fluence
 
 logger = logging.getLogger('laff')
 
@@ -26,6 +25,8 @@ def broken_powerlaw(params, x):
     else:
         logger.critical('Input params not accepted type.')
         raise TypeError(f'params is not dict/list -> {type(params)}')
+    
+    breaks = [10**val for val in breaks]
 
     mask = []
 
@@ -47,79 +48,109 @@ def broken_powerlaw(params, x):
 
     return model
 
-def broken_powerlaw_wrapper(params, x):
-    """Wrapper for ODR to fit log10 break times. Intended for internal use only."""
-
-    n = int((len(params)-2)/2)
-    params = list(params)
-    params[n+1:-1] = [10**val for val in params[n+1:-1]]
-
-    return broken_powerlaw(params, x)
-    
+def sum_residuals(params, *args):
+    x, y, y_err, _, _ = args
+    return np.sum(((y - broken_powerlaw(params, x)) / y_err) ** 2)    
 
 #################################################################################
-### SCIPY ODR FITTING
+### FITTING
 #################################################################################
 
-def odr_fitter(data, input_par, convert_to_std=1.0, t_max=0):
-    """Fitting function for powerlaw."""
-    data = RealData(data.time, data.flux, sx=data.time_perr*convert_to_std, sy=data.flux_perr*convert_to_std)
-    model = Model(broken_powerlaw_wrapper)
-    n = int((len(input_par)-2)/2)
-
-    odr = ODR(data, model, beta0=input_par)
-    output = odr.run()
-
-    if output.info != 1:
-        i = 1
-        while output.info != 1 and i < 100:
-            output = odr.restart()
-            i += 1
-            
-    return output.beta, output.sd_beta
-
-
-def find_afterglow_fit(data, conversion_to_std):
+def find_afterglow_fit(data, data_flare, conversion_to_std):
 
     data_start, data_end = data['time'].iloc[0], data['time'].iloc[-1]
 
     model_fits = []
 
+    ## temp
+    import matplotlib.pyplot as plt
+
     logger.debug('breaknum : fit_par / fit_err / fit_stats')
     for breaknum in range(0, 6):
 
+        # Guess parameters.
         slope_guesses = [1.0] * (breaknum+1)
         break_guesses = list(np.linspace(np.log10(data_start), np.log10(data_end), num=breaknum+2))[1:-1]
-        normal_guess  = [data['flux'].iloc[0] * data['time'].iloc[0]]
+        # break_guesses = list(np.logspace(np.log10(data_start), np.log10(data_end), num=breaknum+2))[1:-1]
+        normal_guess  = [data['flux'].iloc[0]]
         input_par = slope_guesses + break_guesses + normal_guess
 
-        fit_par, fit_err = odr_fitter(data, input_par, convert_to_std=conversion_to_std, t_max=data_end)
-        
-        if list(fit_par[breaknum+1:-1]) != sorted(list(fit_par[breaknum+1:-1])):
-            fit_par[breaknum+1:-1] = sorted(list(fit_par[breaknum+1:-1]))
+        # Parameter bounds.
 
-        fit_par[breaknum+1:-1] = [10**x for x in fit_par[breaknum+1:-1]]
+        if breaknum == 0:
+            bounds = ([-0.5, 3.0], [0, np.inf])
+        else:
+            bounds = tuple([[-0.5, 3.0]] * (breaknum + 1) + [[np.log10(data_start), np.log10(data_end)]] * breaknum + [[0, np.inf]])
         
-        fit_stats = calculate_fit_statistics(data, broken_powerlaw, fit_par)
+        def all_constraints(params, *args):
+            _, _, _, flare_x, flare_y = args
 
-        model_fits.append([fit_par, fit_err, fit_stats])
+            # order breaks
+            breaks = params[breaknum+1:-1]
+            ordered = np.diff(breaks) - 1e-5
+
+            # flares as upper lims
+            upperlims = flare_y - broken_powerlaw(params, flare_x)
+
+            return np.concatenate([ordered, upperlims])
+        
+        # fit = fmin_slsqp(sum_residuals, input_par, f_ieqcons=upper_lims)
+        fit, fx, its, imode, smode = fmin_slsqp(sum_residuals, input_par, bounds=bounds, f_ieqcons=all_constraints, args=(data.time, data.flux, data.flux_perr, data_flare[0], data_flare[1]), full_output=True)
+
+
+        #### temp
+        max, min = np.log10(data['time'].iloc[0] - data['time_nerr'].iloc[0]), np.log10(data['time'].iloc[-1] + data['time_perr'].iloc[-1])
+        constant_range = np.logspace(min, max, num=5000)
+
+        plt.scatter(data['time'], data['flux'], marker='o', color='grey')
+        plt.scatter(data_flare[0], data_flare[1], marker='.', color='red', alpha=0.5)
+        plt.plot(constant_range, broken_powerlaw(fit, constant_range), label=breaknum)
+        for brk in fit[breaknum+1:-1]:
+            plt.axvline(10**brk, linewidth='--')
+        plt.loglog()
+        plt.show()
+        #### temp
+
+    #### temp
+    plt.legend()
+
+        # fit_par[breaknum+1:-1] = [10**x for x in fit_par[breaknum+1:-1]]
+        
+        # fit_stats = calculate_fit_statistics(data, broken_powerlaw, fit_par)
+
+        # model_fits.append([fit_par, fit_err, fit_stats])
+
+        # # temp
+        # if breaknum == 1:
+        #     temp_fit = [fit_par, fit_err, fit_stats]
 
     best_fit, best_err, best_stats = min(model_fits, key=lambda x: x[2]['deltaAIC'])
+
+    # temp
+    best_fit, best_err, best_stats = temp_fit
+
+    print(best_fit)
+    print('')
+    print('')
+    print('')
     breaknum = int((len(best_fit)-2)/2)
 
     slopes = best_fit[0:breaknum+1]
+    print(slopes)
     breaks = best_fit[breaknum+1:-1]
+    print(breaks)
 
-    if breaks[0] < data['time'].iloc[0]:
-        print('yes!')
-        breaks = breaks[1:]
-        slopes = slopes[1:]
-        breaknum -= 1
+    if breaknum != 0:
+        if breaks[0] < data['time'].iloc[0]:
+            print('yes!')
+            # breaks = breaks[1:]
+            # slopes = slopes[1:]
+            # breaknum -= 1
 
-    if breaks[-1] > data['time'].iloc[-1]:
-        breaks = breaks[:-1]
-        slopes = slopes[:-1]
-        breaknum -= 1
+        while breaks[-1] > data['time'].iloc[-1]:
+            breaks = breaks[:-1]
+            slopes = slopes[:-1]
+            breaknum -= 1
 
     best_fit = list(slopes) + list(breaks) + [best_fit[-1]]
 
@@ -132,7 +163,6 @@ def find_afterglow_fit(data, conversion_to_std):
     logger.info('Afterglow fitted with %s breaks.', breaknum)
 
     return best_fit, best_err, best_stats, breaknum
-
 
 #################################################################################
 # CALCULATE FLUENCE
