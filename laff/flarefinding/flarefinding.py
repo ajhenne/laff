@@ -19,12 +19,13 @@ def flare_finding(data, algorithm, **kwargs):
     """
 
     ## Choose algorithm.
-    if algorithm in ('default', 'sequential', ''):
-        from .algorithms import sequential
-        flares = sequential(data)
-    elif algorithm == 'test':
+    if algorithm in ('default', 'savgol', ''):
         from .algorithms import flares_savgol
         flares = flares_savgol(data, **kwargs)
+    elif algorithm == 'sequential':
+        # oudated
+        from .algorithms import sequential
+        flares = sequential(data)
     else:
         raise ValueError("invalid algorithm used")
     

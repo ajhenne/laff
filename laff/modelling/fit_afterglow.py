@@ -3,8 +3,6 @@ import logging
 from scipy.optimize import fmin_slsqp
 from ..utility import calculate_fit_statistics, calculate_par_err
 
-import matplotlib.pyplot as plt
-
 logger = logging.getLogger('laff')
 
 #################################################################################

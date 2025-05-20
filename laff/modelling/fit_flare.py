@@ -48,16 +48,9 @@ def flare_fitter(data, continuum, flares, model='fred'):
     
     """
 
-    import matplotlib.pyplot as plt ## temp
-
     logger.info("Fitting flares...")
 
     data['residuals'] = data['flux'] - broken_powerlaw(continuum['params'], data['time'])
-
-    # plt.figure(figsize=(10,8))
-    # plt.scatter(data.time, data.residuals, marker='.', color='grey')
-    # plt.axhline(0, color='grey', linestyle='--')
-    # plt.semilogx()
 
     flareFits    = []
     flareStats   = []
@@ -136,8 +129,6 @@ def flare_fitter(data, continuum, flares, model='fred'):
         for i in range(0, len(flare_fit), 5):
         
             individual_par = flare_fit[i:i+5]
-
-            # plt.plot(data['time'], fred_flare(individual_par, data['time']), linestyle='--', linewidth=0.5, color='r')
             
             def chi2_wrapper(individual_par):
                 return sum_residuals(individual_par, data['time'], data['residuals'], data['flux_perr'])
