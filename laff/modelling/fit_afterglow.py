@@ -75,9 +75,9 @@ def find_afterglow_fit(data, data_flare):
 
         # Parameter bounds.
         if breaknum == 0:
-            bounds = ([-1.0, 6.0], [0, np.inf])
+            bounds = ([-0.3, 6.0], [0, np.inf])
         else:
-            bounds = tuple([[-1.0, 6.0]] * (breaknum + 1) + [[np.log10(data['time'].iloc[0])+0.05, np.log10(data['time'].iloc[-1])-0.05]] * breaknum + [[0, np.inf]])
+            bounds = tuple([[-0.3, 6.0]] * (breaknum + 1) + [[np.log10(data['time'].iloc[0])+0.05, np.log10(data['time'].iloc[-1])-0.05]] * breaknum + [[0, np.inf]])
         
         # Constraints.
         def all_constraints(params, *args):
