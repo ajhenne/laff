@@ -67,7 +67,7 @@ def set_logging_level(level):
 ### FIND FLARES
 ################################################################################
 
-def findFlares(data, algorithm='sequential', **kwargs):
+def findFlares(data, algorithm='savgol', **kwargs):
     """Identify flares within datasets."""
 
     logger.debug(f"Starting findFlares - method {algorithm}")
@@ -83,7 +83,7 @@ def findFlares(data, algorithm='sequential', **kwargs):
 ### CONTINUUM FITTING
 ################################################################################
 
-def fitAfterglow(data: pd.DataFrame, flare_indices: list[list[int]] = None, *, errors_to_std: float = 1.0, count_flux_ratio: float = 1.0) -> dict:
+def fitAfterglow(data: pd.DataFrame, flare_indices: list[list[int]] = None, *, errors_to_std: float = 1.0, count_ratio: float = 1.0) -> dict:
     """Fits the afterglow of the light curve with a series of broken power laws.
 
     Args:
@@ -132,7 +132,7 @@ def fitAfterglow(data: pd.DataFrame, flare_indices: list[list[int]] = None, *, e
     normal_err = afterglow_err[-1]
 
     # Calculate fluence.
-    afterglow_fluence = calculate_afterglow_fluence(data, breaknum, breaks, afterglow_par, count_flux_ratio)
+    afterglow_fluence = calculate_afterglow_fluence(data, breaknum, breaks, afterglow_par, count_ratio)
 
     return {'params': {
                 'break_num': breaknum,
@@ -146,7 +146,7 @@ def fitAfterglow(data: pd.DataFrame, flare_indices: list[list[int]] = None, *, e
 ### FIT FLARES
 ################################################################################
 
-def fitFlares(data, flare_indices, continuum, *, count_ratio=1.0, flare_model='fred', skip_mcmc=False):
+def fitFlares(data, flare_indices, afterglow, *, count_ratio=1.0, flare_model='fred', skip_mcmc=False):
 
     if not flare_indices:
         return False
@@ -154,7 +154,7 @@ def fitFlares(data, flare_indices, continuum, *, count_ratio=1.0, flare_model='f
     flare_model = fred_flare
 
     # Fit each flare.
-    flare_fits, flare_stats, flare_errs, flare_indices = flare_fitter(data, continuum, flare_indices, model=flare_model)
+    flare_fits, flare_stats, flare_errs, flare_indices = flare_fitter(data, afterglow, flare_indices, model=flare_model)
 
     # Format, calculate times, fluence.
     flaresDict = package_flares(data, flare_fits, flare_stats, flare_errs, flare_indices, count_ratio=count_ratio)
@@ -166,12 +166,12 @@ def fitFlares(data, flare_indices, continuum, *, count_ratio=1.0, flare_model='f
 ################################################################################
 
 def fitGRB(data: pd.DataFrame, *,
-           flare_algorithm: str = 'sequential', flare_model: str = 'fred',
-           errors_to_std: float = 1.0, count_flux_ratio: float = 1.0,
-            rich_output: bool = False, skip_mcmc: bool = False, break_num=False):
+           flare_algorithm: str = 'savgol', flare_model: str = 'fred',
+           errors_to_std: float = 1.0, count_ratio: float = 1.0,
+            rich_output: bool = False, break_num=False):
     # flare_model - use a certain flare model
-    # use_odr - force use odr, disregard mcmc fitting
     # force_breaks - force a certain break_num
+    # cont_ratio
 
     # remove rich_output
     ## TODO ADD DESC HERE
@@ -179,9 +179,9 @@ def fitGRB(data: pd.DataFrame, *,
     if check_data_input(data) == False:
         raise ValueError("check data failed")
 
-    flare_indices = findFlares(data, algorithm=flare_algorithm, savgol_len=False) # Find flare deviations.
-    afterglow = fitAfterglow(data, flare_indices, errors_to_std=errors_to_std, count_flux_ratio=count_flux_ratio) # Fit continuum.
-    flares = fitFlares(data, flare_indices, afterglow, count_flux_ratio, flare_model, skip_mcmc=skip_mcmc) # Fit flares.
+    flare_indices = findFlares(data, algorithm=flare_algorithm) # Find flare deviations.
+    afterglow = fitAfterglow(data, flare_indices, errors_to_std=errors_to_std, count_ratio=count_ratio) # Fit continuum.
+    flares = fitFlares(data, flare_indices, afterglow, count_ratio=count_ratio, flare_model=flare_model) # Fit flares.
 
     logger.info(f"LAFF run finished.")
     return afterglow, flares
