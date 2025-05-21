@@ -71,29 +71,22 @@ def flare_fitter(data, continuum, flares, model='fred'):
 
         while try_another == True:
 
-            maximums = [found_maxima[i]+start for i in ranked_maxima_idx[:flare_count]]
-
-            if len(maximums) and flare_count == 1:
-                maximums = [peak]
-
-            if len(maximums) != flare_count:
-                try_another = False
-                continue
-
             input_par = []
 
-            for i, pk in enumerate(maximums):
+            peak_guesses = np.linspace(np.log10(t_start), np.log10(t_end), num=flare_count+2)[1:-1]
+            peak_guesses = [10**x for x in peak_guesses]
 
+            for i in range(flare_count):
                 # Parameter guesses.
-                t_peak = t_peak
-                rise  = (t_peak - t_start)
-                decay = (t_end - t_peak)
+                t_max = peak_guesses[i] if flare_count > 1 else t_peak
+                rise  = (t_peak - t_start) / (3 * flare_count)
+                decay = (t_end - t_peak) / (2 * flare_count)
                 sharpness = 2
-                amplitude = data['flux'].iloc[pk]
+                amplitude = data['residuals'].iloc[peak]
 
-                input_par.extend((t_peak, rise, decay, sharpness, amplitude))
+                input_par.extend((t_max, rise, decay, sharpness, amplitude))
 
-            bounds = flare_count * ([t_start, t_end], [rise/10, t_end-t_start], [decay/10, t_end-t_start], [1.0, 3.0], [data['flux'].iloc[start], data['flux'].iloc[peak]*3])
+            bounds = flare_count * ([t_start, t_end], [rise/10, t_end-t_start], [decay/10, t_end-t_start], [1.0, 3.0], [data['flux'].min(), data['flux'].max()])
 
             def all_constraints(params, *args):
 
@@ -102,13 +95,16 @@ def flare_fitter(data, continuum, flares, model='fred'):
                 y_points = [data['residuals'].iloc[x] for start, peak, end in flares for x in (start, peak, end)]
                 upper_limits = y_points - fred_flare(params, x_points)
 
-                return np.concatenate([upper_limits])
+                flare_shape = [(params[2+(i*5)] - params[1+(i*5)]) for i in range(flare_count)]
 
-            fitted_flare = fmin_slsqp(sum_residuals, input_par, bounds=bounds, f_ieqcons=all_constraints, args=(data.time, data.residuals, data.flux_perr), iter=100, iprint=0)
+                # return np.concatenate([upper_limits])
+                return np.concatenate([upper_limits, flare_shape])
+
+            fitted_flare = fmin_slsqp(sum_residuals, input_par, bounds=bounds, f_ieqcons=all_constraints, args=(data.time, data.residuals, data.flux_perr), iter=1000, iprint=0)
 
             fitted_stats = calculate_fit_statistics(data, fred_flare, fitted_flare, y_col='residuals')
 
-            print('flare_count', flare_count, fitted_stats['BIC'])
+            # print('flare_count', flare_count, fitted_stats['BIC'])
             if flare_count == 1:
                 prev_fits = fitted_flare
                 prev_stat = fitted_stats
