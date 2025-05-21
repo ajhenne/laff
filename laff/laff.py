@@ -190,6 +190,18 @@ def fitGRB(data: pd.DataFrame, *,
 ### PLOTTING
 ################################################################################
 
+def printGRB(data, afterglow, flares):
+
+    print(f"\033[1m// Afterglow - {afterglow['params']['break_num']} breaks\033[0m")
+
+    print("Breaks |", ", ".join(f"{10**x:.0f} \033[2m(-{10**x - 10**(x-dx):.0f},+{10**(x+dx) - 10**x:.0f})\033[0m" for x, dx in zip(afterglow['params']['breaks'], afterglow['params']['breaks_err'])))
+
+    print("Slopes |", ", ".join(f"{x:.2f} \033[2m(+/-{dx:.2f})\033[0m" for x, dx in zip(afterglow['params']['slopes'], afterglow['params']['slopes_err'])))
+
+    print("Normal |", f"{afterglow['params']['normal']:.2f} \033[2m({afterglow['params']['normal_err']:.2f})\033[0m")
+
+    return 
+
 def plotGRB(data, afterglow, flares, show=True, save_path=None, bat=False):
     logger.info(f"Starting plotGRB.")
 
