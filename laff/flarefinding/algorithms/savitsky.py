@@ -24,7 +24,7 @@ def flares_savgol(data, **kwargs) -> list:
 
     logger.debug("Starting sequential_findflares()")
 
-    if len(data.index) > 7:
+    if len(data.index) > 15:
         size = 15
     else: size = 4
     

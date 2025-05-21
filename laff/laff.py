@@ -167,8 +167,7 @@ def fitFlares(data, flare_indices, afterglow, *, count_ratio=1.0, flare_model='f
 
 def fitGRB(data: pd.DataFrame, *,
            flare_algorithm: str = 'savgol', flare_model: str = 'fred',
-           errors_to_std: float = 1.0, count_ratio: float = 1.0,
-            rich_output: bool = False, break_num=False):
+           errors_to_std: float = 1.0, count_ratio: float = 1.0):
     # flare_model - use a certain flare model
     # force_breaks - force a certain break_num
     # cont_ratio
@@ -199,6 +198,8 @@ def printGRB(data, afterglow, flares):
     print("Slopes |", ", ".join(f"{x:.2f} \033[2m(+/-{dx:.2f})\033[0m" for x, dx in zip(afterglow['params']['slopes'], afterglow['params']['slopes_err'])))
 
     print("Normal |", f"{afterglow['params']['normal']:.2f} \033[2m({afterglow['params']['normal_err']:.2f})\033[0m")
+
+    print(afterglow)
 
     return 
 
