@@ -28,9 +28,6 @@ def flares_savgol(data, **kwargs) -> list:
         size = 15
     else: size = 4
     
-    if 'savgol_len' in kwargs:
-        size = kwargs['savgol_len']
-    
     data['savgol'] = savgol_filter(data.flux, window_length=size, polyorder=3)
 
     if 'plot_savgol' in kwargs:
