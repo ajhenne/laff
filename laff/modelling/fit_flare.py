@@ -93,42 +93,46 @@ def flare_fitter(data, continuum, flares, model='fred'):
 
                 input_par.extend((t_peak, rise, decay, sharpness, amplitude))
 
-            bounds = flare_count * ([t_start, t_end], [rise/10, t_end-t_start], [decay/10, t_end-t_start], [1.0, 5.0], [data['flux'].iloc[start], data['flux'].iloc[peak]*3])
+            bounds = flare_count * ([t_start, t_end], [rise/10, t_end-t_start], [decay/10, t_end-t_start], [1.0, 3.0], [data['flux'].iloc[start], data['flux'].iloc[peak]*3])
 
             def all_constraints(params, *args):
-                x_points = [data['time'].iloc[x] for x in (start, peak, end)]
-                y_points = [data['residuals'].iloc[x] for x in (start, peak, end)]
 
+                # start, peak and end points should be upper limits
+                x_points = [data['time'].iloc[x] for start, peak, end in flares for x in (start, peak, end)]
+                y_points = [data['residuals'].iloc[x] for start, peak, end in flares for x in (start, peak, end)]
                 upper_limits = y_points - fred_flare(params, x_points)
-                return upper_limits
+
+                return np.concatenate([upper_limits])
 
             fitted_flare = fmin_slsqp(sum_residuals, input_par, bounds=bounds, f_ieqcons=all_constraints, args=(data.time, data.residuals, data.flux_perr), iter=100, iprint=0)
 
+            fitted_stats = calculate_fit_statistics(data, fred_flare, fitted_flare, y_col='residuals')
+
+            print('flare_count', flare_count, fitted_stats['BIC'])
             if flare_count == 1:
-                chi_1, dof_1 = determine_additional_flare(fitted_flare, data, flare_count, None, None)
+                prev_fits = fitted_flare
+                prev_stat = fitted_stats
                 flare_count += 1
-                flare_fit = fitted_flare
-                prev_fit = fitted_flare
                 continue
+            
             else:
-                p_value, chi_2, dof_2 = determine_additional_flare(fitted_flare, data, flare_count, chi_1, dof_1)
-                if p_value < 0.0027:
-                    chi_1 = chi_2
-                    dof_1 = dof_2
+                if fitted_stats['BIC'] + 6 < prev_stat['BIC']:
+                    prev_fits = fitted_flare
+                    prev_stat = fitted_stats
                     flare_count += 1
-                    prev_fit = fitted_flare
                     continue
                 else:
-                    flare_fit = prev_fit
+                    fitted_flare = prev_fits
+                    fitted_stats = prev_stat
                     flare_count -= 1
                     try_another = False
 
         logger.debug(f"Flare {start}/{peak}/{end} fitted")
         logger.debug('\tconsists of %s flares', flare_count)
 
-        for i in range(0, len(flare_fit), 5):
+        for i in range(0, len(fitted_flare), 5):
         
-            individual_par = flare_fit[i:i+5]
+            individual_par = fitted_flare[i:i+5]
             
             def chi2_wrapper(individual_par):
                 return sum_residuals(individual_par, data['time'], data['residuals'], data['flux_perr'])
@@ -149,7 +153,7 @@ def flare_fitter(data, continuum, flares, model='fred'):
     logger.info("Flare fitting complete for all flares.")
     return flareFits, flareStats, flareErrs, flareIndices
 
-def determine_additional_flare(par, data, count, chi_1, dof_1):
+def calculate_p_value(par, data, count, chi_1, dof_1):
 
     chi_2 = sum_residuals(par, data['time'], data['residuals'], data['flux_perr'])
     dof_2 = len(data['flux']) - len(par)
