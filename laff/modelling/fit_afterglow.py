@@ -1,7 +1,7 @@
 import numpy as np
 import logging
 from scipy.optimize import fmin_slsqp
-from ..utility import calculate_fit_statistics, calculate_par_err
+from ..utility import calculate_fit_statistics, calculate_par_err, calculate_fluence
 
 logger = logging.getLogger('laff')
 
@@ -113,13 +113,14 @@ def find_afterglow_fit(data, data_flare):
 # CALCULATE FLUENCE
 #################################################################################
 
-def calculate_afterglow_fluence(data, breaknum, break_times, fit_par, count_to_flux_conversion):
+def calculate_afterglow_fluence(data, breaknum, break_times, fit_par, count_ratio):
+
+    break_times = [10**(x) for x in break_times]
 
     integral_boundaries = [data.iloc[0].time, *break_times, data.iloc[-1].time]
 
-    # afterglow_fluence = np.sum([calculate_fluence(broken_powerlaw, fit_par, integral_boundaries[i], integral_boundaries[i+1]) for i in range(breaknum)])
-    # afterglow_fluence *= count_to_flux_conversion
-    # logger.info('Afterglow fluence calculated as %s', afterglow_fluence)
+    phase_fluences = [calculate_fluence(broken_powerlaw, fit_par, integral_boundaries[i], integral_boundaries[i+1], count_ratio) * count_ratio for i in range(breaknum)]
+    total_fluence = np.sum(phase_fluences)
+    logger.info('Afterglow fluence calculated as %s', total_fluence)
 
-    afterglow_fluence = 0
-    return afterglow_fluence
+    return total_fluence, phase_fluences
