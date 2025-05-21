@@ -140,7 +140,7 @@ def flare_fitter(data, continuum, flares, model='fred'):
 
             flareFits.append(list(individual_par))
             flareErrs.append(list(individual_errors))
-            flareStats.append(list(individual_stats))
+            flareStats.append(list(individual_stats.values()))
             flareIndices.append([start, peak, end])
 
             logger.debug('\tparams\t%s', list(round(x, 2) for x in individual_par))
