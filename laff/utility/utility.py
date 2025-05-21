@@ -11,24 +11,31 @@ PAR_NAMES_FLARE = ['t_start', 'rise', 'decay', 'amplitude']
 PAR_NAMES_CONTINUUM = ['break_num', 'slopes', 'slopes_err', 'breaks', 'breaks_err', 'normal', 'normal_err']
 STAT_NAMES_CONTINUUM = ['chisq', 'rchisq', 'n', 'npar', 'dof', 'deltaAIC']
 
-def calculate_fit_statistics(data, model, params):
+def calculate_fit_statistics(data, model, params, y_col='flux'):
     
     # if temp_flare_shell:
         # fitted_model = model(np.array(data.time), params)
     # else:
         # fitted_model = model(params, np.array(data.time))
 
-    chisq = np.sum(((data['flux'] - model(params, data['time'])) / data['flux_perr']) ** 2)  
-    
+    chisq = np.sum(((data[y_col] - model(params, data['time'])) / data['flux_perr']) ** 2)  
     n = len(data['time'])
     npar = len(params)
+    
     dof = n - npar
     r_chisq = chisq / dof
 
     deltaAIC = (2 * npar) + (n * np.log(r_chisq))
     deltaAIC = deltaAIC if deltaAIC != -np.inf else np.inf # negative infinity check
         
-    return {'chisq': chisq, 'rchisq': r_chisq, 'n': n, 'npar': npar, 'dof': dof, 'deltaAIC': deltaAIC}
+    residuals = data[y_col] - model(params, data['time'])
+    variance = data['flux_perr'] ** 2
+    lnL = -0.5 * np.sum((residuals**2) / variance + np.log(2 * np.pi * variance))
+
+    BIC = (np.log(n) * npar) - 2 * lnL
+        
+    # return {'n': n, 'npar': npar, 'dof': dof, 'deltaAIC': deltaAIC}
+    return {'chisq': chisq, 'rchisq': r_chisq, 'n': n, 'npar': npar, 'dof': dof, 'deltaAIC': deltaAIC, 'BIC': BIC}
 
 def check_data_input(data):
 
