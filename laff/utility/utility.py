@@ -27,7 +27,7 @@ def calculate_fit_statistics(data, model, params, y_col='flux'):
 
     deltaAIC = (2 * npar) + (n * np.log(r_chisq))
     deltaAIC = deltaAIC if deltaAIC != -np.inf else np.inf # negative infinity check
-        
+
     residuals = data[y_col] - model(params, data['time'])
     variance = data['flux_perr'] ** 2
     lnL = -0.5 * np.sum((residuals**2) / variance + np.log(2 * np.pi * variance))
