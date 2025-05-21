@@ -14,7 +14,7 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 from .flarefinding import flare_finding
 from .modelling import broken_powerlaw, find_afterglow_fit, calculate_afterglow_fluence
 from .modelling import flare_fitter, package_flares, fred_flare
-from .utility import check_data_input, calculate_fit_statistics, calculate_fluence, get_xlims
+from .utility import check_data_input, calculate_fit_statistics, calculate_fluence
 
 ## recent note:
 ## the conditions in fit_afterglow work but the fitter gets 'stuck' at that
@@ -208,7 +208,10 @@ def plotGRB(data, afterglow, flares, show=True, save_path=None, bat=False):
         # Adjustments for xlims, ylims on a log graph.
         upper_flux, lower_flux = data['flux'].max() * 10, data['flux'].min() * 0.1
         plt.ylim(lower_flux, upper_flux)
-        plt.xlim(get_xlims(data))
+
+        lower_time = 0.8 * (data['time'].iloc[0] - data['time_nerr'].iloc[0])
+        upper_time = 1.2 * (data['time'].iloc[-1] + data['time_perr'].iloc[-1])
+        plt.xlim(lower_time, upper_time)
         plt.loglog()
 
     # For smooth plotting of fitted functions.
@@ -245,7 +248,7 @@ def plotGRB(data, afterglow, flares, show=True, save_path=None, bat=False):
     # Plot powerlaw breaks.
     logger.debug('Plotting powerlaw breaks.')
     for x_pos in afterglow['params']['breaks']:
-        plt.axvline(x=x_pos, color='grey', linestyle='--', linewidth=0.5, zorder=0)
+        plt.axvline(x=10**x_pos, color='grey', linestyle='--', linewidth=0.5, zorder=0)
 
     if save_path:
         plt.savefig(save_path)
