@@ -165,7 +165,7 @@ def fit_flares(data, flare_indices):
         flare_data['flux'] = flare_data['flux'].apply(lambda x: max(x, 0))
 
         for i in range(0, len(fitted_flare), 5):
-            flares.append({'indices': (dev_start, dev_end), 'parameters': fitted_flare[i:i+5]})
+            flares.append({'indices': (dev_start, dev_end), 'parameters': fitted_flare[i:i+5], 'fit_statistics': fitted_stats})
 
     return flares
 
