@@ -6,6 +6,7 @@ from .fit_afterglow import (
 
 from .fit_flare import (
     fred_flare,
+    sum_residuals,
     flare_fitter,
     package_flares
 )
