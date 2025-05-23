@@ -62,9 +62,6 @@ def flare_fitter(data, continuum, flares, model='fred'):
         try_another = True
         flare_count = 1
 
-        found_maxima, properties = find_peaks(data['residuals'].iloc[start:end], prominence=data['residuals'].iloc[start])
-        ranked_maxima_idx = np.argsort(properties['prominences'][::-1])
-
         t_start = data['time'].iloc[start]
         t_peak  = data['time'].iloc[peak]
         t_end   = data['time'].iloc[end]
@@ -78,9 +75,9 @@ def flare_fitter(data, continuum, flares, model='fred'):
 
             for i in range(flare_count):
                 # Parameter guesses.
-                t_max = peak_guesses[i] if flare_count > 1 else t_peak
-                rise  = (t_peak - t_start) / (3 * flare_count)
-                decay = (t_end - t_peak) / (2 * flare_count)
+                t_max     = peak_guesses[i] if flare_count > 1 else t_peak
+                rise      = (t_peak - t_start) / (3 * flare_count)
+                decay     = (t_end - t_peak) / (2 * flare_count)
                 sharpness = 2
                 amplitude = data['residuals'].iloc[peak]
 
@@ -90,9 +87,17 @@ def flare_fitter(data, continuum, flares, model='fred'):
 
             def all_constraints(params, *args):
 
+                temp_start = start
+                while data['residuals'].iloc[temp_start] <= data['flux'].iloc[temp_start] * 1e-3:
+                    temp_start += 1
+
+                temp_end = end
+                while data['residuals'].iloc[temp_end] <= data['flux'].iloc[temp_end] * 1e-3:
+                    temp_end -= 1
+
                 # start, peak and end points should be upper limits
-                x_points = [data['time'].iloc[x] for start, peak, end in flares for x in (start, peak, end)]
-                y_points = [data['residuals'].iloc[x] for start, peak, end in flares for x in (start, peak, end)]
+                x_points = [data['time'].iloc[x] for start, peak, end in flares for x in (temp_start, peak, end)]
+                y_points = [data['residuals'].iloc[x] for start, peak, end in flares for x in (temp_start, peak, end)]
                 upper_limits = y_points - fred_flare(params, x_points)
 
                 flare_shape = [(params[2+(i*5)] - params[1+(i*5)]) for i in range(flare_count)]
