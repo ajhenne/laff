@@ -3,8 +3,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import logging
 import warnings
-import math
-from intersect import intersection
 
 # Ignore warnings.
 # from pandas.core.common import SettingWithCopyWarning
@@ -206,6 +204,8 @@ def printGRB(data, afterglow, flares):
 def plotGRB(data, afterglow, flares, show=True, save_path=None, bat=False):
     logger.info(f"Starting plotGRB.")
 
+    plt.rcParams.update({'font.size': 16})
+
     plt.xlabel("Time (s)")
     plt.ylabel("Flux (units)")
 
@@ -222,13 +222,13 @@ def plotGRB(data, afterglow, flares, show=True, save_path=None, bat=False):
         upper_flux, lower_flux = data['flux'].max() * 10, data['flux'].min() * 0.1
         plt.ylim(lower_flux, upper_flux)
 
-        lower_time = 0.8 * (data['time'].iloc[0] - data['time_nerr'].iloc[0])
+        lower_time = 0.8 * (data['time'].iloc[0] + data['time_nerr'].iloc[0])
         upper_time = 1.2 * (data['time'].iloc[-1] + data['time_perr'].iloc[-1])
         plt.xlim(lower_time, upper_time)
         plt.loglog()
 
     # For smooth plotting of fitted functions.
-    max, min = np.log10(data['time'].iloc[0] - data['time_nerr'].iloc[0]), np.log10(data['time'].iloc[-1] + data['time_perr'].iloc[-1])
+    max, min = np.log10(data['time'].iloc[0] + data['time_nerr'].iloc[0]), np.log10(data['time'].iloc[-1] + data['time_perr'].iloc[-1])
     constant_range = np.logspace(min, max, num=5000)
 
     # Plot continuum model.
