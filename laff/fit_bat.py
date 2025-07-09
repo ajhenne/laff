@@ -67,7 +67,7 @@ def filter_data(data):
         peak_index = data['savgol'].iloc[a:b].idxmax()
         amplitude = data['savgol'].iloc[peak_index]
 
-        if amplitude < 1.5 * np.average(data['moving_std'].iloc[a:b]):
+        if amplitude < 2 * np.average(data['moving_std'].iloc[a:b]):
             continue
         if len(range(a, b)) <= 1:
             continue
