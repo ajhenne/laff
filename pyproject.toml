@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "laff"
-version = "0.13.11"
+version = "0.13.12"
 description = "GRB lightcurve flare and continuum fitter."
 authors = ["Adam Hennessy <ah724@leicester.ac.uk>"]
 readme = "README.md"

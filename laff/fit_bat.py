@@ -188,8 +188,8 @@ def fit_flares(data, flare_indices):
             fluence_decay = calculate_fluence(fred_flare, fitted_flare[i:i+5], fitted_flare[i], t_end, 1)  
             fluence_total = fluence_rise + fluence_decay
 
-            start_time = fitted_flare[i] - (fitted_flare[i+1] * (-np.log(0.001)) **(1/fitted_flare[i+3]))
-            end_time = fitted_flare[i] + (fitted_flare[i+2] * (-np.log(0.001)) **(1/fitted_flare[i+3]))
+            start_time = fitted_flare[i] - (fitted_flare[i+1] * (-np.log(0.01)) **(1/fitted_flare[i+3]))
+            end_time = fitted_flare[i] + (fitted_flare[i+2] * (-np.log(0.01)) **(1/fitted_flare[i+3]))
             
             flares.append({'indices': (start_time, end_time), 'parameters': fitted_flare[i:i+5], 'fluence': [fluence_rise, fluence_decay, fluence_total], 'fit_statistics': fitted_stats})
 
@@ -261,9 +261,9 @@ def plotPrompt(prompt_fit, **kwargs):
         srt, end = flare['indices']
 
         if kwargs.get('flare_spans', True):
-            ax1.axvspan(data['time'].iloc[srt], data['time'].iloc[end], color='b', alpha=0.2)
+            ax1.axvspan(srt, end, color='b', alpha=0.2)
             if residuals:
-                ax2.axvspan(data['time'].iloc[srt], data['time'].iloc[end], color='b', alpha=0.2)
+                ax2.axvspan(srt, end, color='b', alpha=0.2)
 
         flare_model = fred_flare(flare['parameters'], constant_range)
         total_model += flare_model
