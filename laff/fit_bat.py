@@ -187,8 +187,11 @@ def fit_flares(data, flare_indices):
             fluence_rise = calculate_fluence(fred_flare, fitted_flare[i:i+5], t_start, fitted_flare[i], 1)
             fluence_decay = calculate_fluence(fred_flare, fitted_flare[i:i+5], fitted_flare[i], t_end, 1)  
             fluence_total = fluence_rise + fluence_decay
+
+            start_time = fitted_flare[i] - (fitted_flare[i+1] * (-np.log(0.001)) **(1/fitted_flare[i+3]))
+            end_time = fitted_flare[i] + (fitted_flare[i+2] * (-np.log(0.001)) **(1/fitted_flare[i+3]))
             
-            flares.append({'indices': (dev_start, dev_end), 'parameters': fitted_flare[i:i+5], 'fluence': [fluence_rise, fluence_decay, fluence_total], 'fit_statistics': fitted_stats})
+            flares.append({'indices': (start_time, end_time), 'parameters': fitted_flare[i:i+5], 'fluence': [fluence_rise, fluence_decay, fluence_total], 'fit_statistics': fitted_stats})
 
 
     return flares
