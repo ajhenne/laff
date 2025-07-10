@@ -86,6 +86,7 @@ def filter_data(data):
 def fit_flares(data, flare_indices):
 
     flare_data = data.copy()
+    flare_data['untouched_flux'] = flare_data['flux']
     flare_data['flux'] -= flare_data['moving_std']
     flare_data['flux'] = flare_data['flux'].apply(lambda x: max(x, 0))
 
@@ -139,7 +140,8 @@ def fit_flares(data, flare_indices):
             def all_constraints():
                 pass
 
-            fitted_flare = fmin_slsqp(sum_residuals, input_par, bounds=bounds, args=(flare_data.time, flare_data.flux, flare_data.flux_perr), iter=200, iprint=0)
+            print('yes')
+            fitted_flare = fmin_slsqp(sum_residuals, input_par, bounds=bounds, args=(flare_data.time, flare_data.untouched_flux, flare_data.flux_perr), iter=200, iprint=0)
 
             fitted_stats = calculate_fit_statistics(flare_data, fred_flare, fitted_flare)
 
@@ -221,7 +223,7 @@ def plotPrompt(prompt_fit, **kwargs):
 
     # Main data points.
     if kwargs.get('main_data', True):
-        ax1.errorbar(data['time'], data['flux'], yerr=data['flux_perr'], linestyle='None', marker='', color='grey', linewidth=0.5, alpha=0.3, zorder=-1)
+        ax1.errorbar(data['time'], data['flux'], yerr=data['flux_perr'], linestyle='None', marker='.', color='grey', linewidth=0.5, alpha=0.4, zorder=-1)
 
     # Savgol filter line.
     if kwargs.get('savgol', True):
