@@ -1,80 +1,109 @@
-# Lightcurve and Flare Fitter - LAFF
+# LAFF — Lightcurve and Flare Fitter
 
-A python package for automatic lightcurve and flare fitting in GRB lightcurves.
+A scientific Python package for the automated modelling of Swift-XRT and Swift-BAT gamma-ray burst (GRB) light curves. It was developed as part of my PhD to enable the statistical analysis of the full GRB population, in particular the pulses and flares observed in many bursts. It has two primary functions dealing with Swift-XRT and Swift-BAT data, respectively.
 
-## Description
+## Features 
 
-This program looks to provide automatic and consistent fitting of GRB lightcurves, ultimately intended for statistical studies of a large collection of GRBs.
-Initially it looks for any 'significant' rises in flux which can be marked as a potential flare. Each potential flare is then refined and cut down until a set
-of start, peak and end times for flares are designated. This flare data is temporarily removed in order to fit a broken powerlaw to the continuum data - the best
-solution between 0 and up to 5 breaks is used. The flare data can then be readded and the flares fitted with either a simple gaussian, or more appropriately, a
-fast-rise slow-decay (FRED) curve.
+- Functions to model Swift-XRT and Swift-BAT light curves
+- Fully automated, just provide time/flux or time/countrate data
+- Process typically takes about five seconds, or a few tens of second for the most complex light curves
+- Returns a well-structured dictionary for each afterglow, flare and pulse component including model parameters and fitting statistics
+- Plotting functions for publication-ready figures
 
-With a fully fitted model, the program will output useful information, either printed to terminal or into a csv table. Such information includes flare timings,
-durations, number of breaks and fluence of the flares and continuum.
+## Usage
 
-To run the program, the user simply needs to point LAFF towards an appropriate lightcurve file (current and planned formats are shown below). See below for full commands and optional instructions.
+### Swift-XRT data
 
-## Getting Started
+```python
+afterglow, flares = laff.fitXRT(data)
+```
 
-### Dependencies
+Flares are identified within the dataset. These are temporarily removed leaving only the underlying afterglow, and a best fit among a set of broken power laws with up to five breaks is found. The removed data can then be fitted, as residuals over the afterglow, with fast-rise exponential-decay (FRED) curves, and finally all components are combined to produce a fully modelled afterglow.
 
-* Python 3
-* lmfit (v1.0.3 or newer)
-* astropy (v5.1 or newer)
-* pandas (v1.4 or newer)
-* matplotlib (v3.5 or newer)
-* scipy (v1.8 or newer)
-* numpy (v1.23 or newer)
+`fitXRT` returns:
+- `afterglow`: a dictionary containing model parameter and fit statistics
+- `flares`: a list of nested dictionaries, one for each flare, containing model parameters, timings and fit statistics
 
-All available through standard python package installation methods (e.g. pip). Earlier versions of these may work but have not been explicility tested.
+### Swift-BAT data
 
-### Installing
+```python
+pulses = laff.fitBAT(data)
+```
 
-To download as pip package:
+The data is iteratively filtered to find the noise level across the data. Residuals significantly above this threshold are then modelled with FRED pulses.
+
+`fitBAT` returns:
+- `pulses`: a list of nested dictionaries, one for each pulse, containing model parameters, timings and fit statistics
+
+### Data import function
+
+```python
+data = laff.lcimport('/path/to/file.qdp', format='')
+```
+
+The importing function is a helper function to take in data from the several common formats Swift data can come in and prepare it for LAFF in a Pandas DataFrame. Available options for `format` are:
+
+- `xrt_repo` - XRT light curve data that is available from the [GRB lightcurve repository](https://www.swift.ac.uk/xrt_curves/) in the .qdp format.
+- `xrt_python` - for light curve data obtained from the `swifttools` [Python package](https://www.swift.ac.uk/API/), usually when analysing large batches of data, in a slightly varied .qdp format
+- `bat` - BAT .csv format file containing time, countrate and error columns, obtained from manually processing BAT observation data with Heasoft.
+
+## Installation
+
 ```
 pip install laff
 ```
 
-### Executing program
+**Dependencies**
 
-* How to run the program
-* Step-by-step bullets
+This package was built and tested in Python 3.12.4, but should work for most recent versions of Python 3.
+
+The required packages and the specific versions everything is tested and compatible in, but any recent version should not cause conflict.
+
+- pandas 2.2.2
+- matplotlib 3.9.0
+- numpy 1.26.4
+- scipy 1.14.0
+- astropy 5.3.4
+
+### Standard usage
+
+For analysing one of, or both, the XRT and BAT data of a burst.
+
+```python
+import laff
+
+# Import data into a pandas DataFrame
+xrt_data = laff.lcimport('/path/to/file.qdp', format='xrt_repo')
+bat_data = laff.lcimport('/path/to/file.csv', format='bat')
+
+# Fit and plot the XRT light curve
+afterglow, flares = laff.fitXRT(data)
+laff.plotXRT(data, afterglow, flares)
+
+# Fit and plot the BAT light curve
+pulses = laff.fitBAT(bat_data)
+laff.plotBAT(data, pulses)
 ```
-code blocks for commands
-```
 
-## Help
+## Extended description
 
-Any advise for common problems or issues.
-```
-command to run if program contains helper info
-```
 
-## Authors
 
-Contributors names and contact info
+My thesis also contains a description of methods, validation and some analysis conducted with the results. Available at: submitted, pending.
 
-ex. Dominique Pizzie  
-ex. [@DomPizzie](https://twitter.com/dompizzie)
 
-## Version History
+## Publications
 
-* 0.2
-    * Various bug fixes and optimizations
-    * See [commit change]() or See [release history]()
-* 0.1
-    * Initial Release
+A full description of the methods is described in Hennessy et al. (2025) (in prep), or my PhD thesis available at (submitted).
 
-## License
+Publications in which the products of this work were used in:
+- Hennessy, A. et al. (2023) 'A LOFAR prompt search for radio emission accompanying X-ray flares in GRB 210112A', *MNRAS*, 526(1), pp. 106–117. https://doi.org/10.1093/mnras/stad2670
+- Hennessy, A. et al. (2025) submitted to *MNRAS*
+ 
+## Contributing
 
-This project is licensed under the [NAME HERE] License - see the LICENSE.md file for details
+This project was initially developed as part of my thesis and is now available open source. Contributions are welcome, please open issues or pull request through GitHub.
 
-## Acknowledgments
+## Acknowledgements
 
-Inspiration, code snippets, etc.
-* [awesome-readme](https://github.com/matiassingers/awesome-readme)
-* [PurpleBooth](https://gist.github.com/PurpleBooth/109311bb0361f32d87a2)
-* [dbader](https://github.com/dbader/readme-template)
-* [zenorocha](https://gist.github.com/zenorocha/4526327)
-* [fvcproductions](https://gist.github.com/fvcproductions/1bfc2d4aecb01a834b46)
+Paper references.
