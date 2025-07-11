@@ -85,12 +85,11 @@ pulses = laff.fitBAT(bat_data)
 laff.plotBAT(data, pulses)
 ```
 
-## Extended description
+## Troubleshooting
 
+Despite the fact I have shown some level of verification to this work through my PhD thesis, there are inevitably some erroneous results spewed out by the code. The random nature of GRBs, noise within the data and things such as observation constraints will cause some strange things to occur in the light curve and my code. The randomness also means it is difficult to fine tune an exact method to consistently catch every single dataset to a perfect standard.
 
-
-My thesis also contains a description of methods, validation and some analysis conducted with the results. Available at: submitted, pending.
-
+While I have eye-tested a number of bursts, there are well over a thousand (and increasing) now, and I have not gone through every single one. If you notice something odd, I would love to hear so I can continue to develop this code. You may either raise an issue or Github, or find ways to contact me on my Github profile.
 
 ## Publications
 
