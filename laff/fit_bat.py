@@ -30,8 +30,8 @@ def filter_data(data):
     data['negative_noise'] = data['flux'].copy()
     data['negative_noise'] = data['negative_noise'].apply(lambda x: min(x, 0))
     data['negative_noise'] = data['negative_noise'].rolling(window=50, min_periods=1).std() * 2
-    data.loc[data['time'] < data['time'].iloc[0] * 0.95, 'negative_noise'] *= 2
-    data.loc[data['time'] > data['time'].iloc[-1] * 0.95, 'negative_noise'] *= 2
+    data.loc[data['time'] < data['time'].iloc[0] * 0.95, 'negative_noise'] *= 10
+    data.loc[data['time'] > data['time'].iloc[-1] * 0.95, 'negative_noise'] *= 10
     data.loc[0, 'negative_noise'] = data['negative_noise'].iloc[1]
 
 
