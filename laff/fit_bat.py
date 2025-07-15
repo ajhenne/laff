@@ -25,46 +25,16 @@ def fitPrompt(data):
 
 def filter_data(data):
 
-    data['savgol'] = savgol_filter(data['flux'], window_length=31, polyorder=3)
-    
-    data['negative_noise'] = data['flux'].copy()
-    data['negative_noise'] = data['negative_noise'].apply(lambda x: min(x, 0))
-    data['negative_noise'] = data['negative_noise'].rolling(window=50, min_periods=1).std() * 2
-    data.loc[data['time'] < data['time'].iloc[0] * 0.95, 'negative_noise'] *= 1e10
-    data.loc[data['time'] > data['time'].iloc[-1] * 0.95, 'negative_noise'] *= 1e10
-    data.loc[0, 'negative_noise'] = data['negative_noise'].iloc[1]
+    data['avg'] = data['flux_perr'].rolling(window=500, min_periods=1).mean()
+    data['flux_broad'] = data['flux'].rolling(window=20, center=True).mean()
+    data['flux_fine'] = data['flux'].rolling(window=10, center=True).mean()
+
+    peak_sig = 1
+    data['deviation'] = data[data['flux_broad'] > peak_sig * data['avg']]['flux_broad']
 
 
-
-    # Filter out negatives.
-    filtered_data = data['savgol'].copy()
-    filtered_data = filtered_data[filtered_data > 0]
-    avg_positive = np.average(filtered_data)
-    
-    # Filter out big peaks.
-    filtered_data = filtered_data[filtered_data < 3 * avg_positive]
-    avg_filter = np.average(filtered_data)
-
-    # Calculate residuals.
-    data['savgol_residuals'] = data['savgol'] - 3 * avg_filter
-    data['savgol_residuals'] = data['savgol_residuals'].apply(lambda x: max(x, 0))
-    
-    # Calculate rolling std.
-    # Cutoff higher peaks.
-    modified_flux = data['flux'].copy()
-    prev_valid = None
-    for i in range(len(modified_flux)):
-        if modified_flux[i] > 3 * avg_filter:
-            if prev_valid is not None:
-                modified_flux[i] = prev_valid
-        else:
-
-            prev_valid = modified_flux[i]
-    data['moving_std'] = modified_flux.rolling(window=501, min_periods=1).std()
-    data.loc[0, 'moving_std'] = data['moving_std'].iloc[1]
-
-    # Gather all flare region indices from residuals.
-    labelled_array, num_features = label(data['savgol_residuals'] > 0)
+    # Aggregate deviation data into regions.
+    labelled_array, num_features = label(data['deviation'] > 0)
     intial_flare_regions = []
 
     for i in range(1, num_features+1):
@@ -72,36 +42,52 @@ def filter_data(data):
         if not indices[0] == indices[-1]:
             intial_flare_regions.append((indices[0], indices[-1]))
 
-    flare_indices = []
-
-    for a, b in intial_flare_regions:
-        peak_index = data['savgol'].iloc[a:b].idxmax()
-        amplitude = data['savgol'].iloc[peak_index]
-
-        if amplitude < 2 * np.average(data['moving_std'].iloc[a:b]):
-            continue
-        if len(range(a, b)) <= 1:
-            continue
-
-        flare_indices.append((a, b))
-
-    flare_indices = sorted(set(flare_indices))
-
-    return data, flare_indices
-
+    return data, intial_flare_regions
 
 ################################################################################
 # FLARE FITTING
 ################################################################################
 
-def fit_flares(data, flare_indices):
+def fit_flares(data, region_indices):
 
-    flare_data = data.copy()
-    flare_data['untouched_flux'] = flare_data['flux']
-    flare_data['flux'] -= flare_data['moving_std']
-    flare_data['flux'] = flare_data['flux'].apply(lambda x: max(x, 0))
+    region_peaks = []
+
+    for idx_start, idx_end in region_indices:
+
+        region_data = data.iloc[idx_start:idx_end]
+
+        flare_peaks, _ = find_peaks(
+            region_data['flux_fine'],
+            height = 1.5*np.average(region_data['avg']),
+            distance = 5,
+            width = 3,
+            prominence = 0.5 * np.median(region_data['avg'])
+        )
+
+        flare_peaks = [x + idx_start for x in peaks]
+        region_peaks.append(flare_peaks)
+
+    data['residuals'] = data['flux_fine'].copy()
 
     flares = []
+
+    for (idx_start, idx_end), peaks in zip(region_indices, region_peaks):
+
+        flare_count = len(region_peaks)
+
+        for flare_peak in region_peaks:
+
+            t_peak = data['time'].iloc[flare_peak]
+            rise   = ()
+
+                # Parameter guesses
+                t_peak    = data['time'].iloc[peak]
+                rise      = (t_peak - t_start) / (6 * i+1)
+                decay     = (t_end - t_peak)   / (4 * i+1)
+                sharp     = 2
+                amplitude = data['savgol'].iloc[peak]
+
+
 
     for dev_start, dev_end in flare_indices:
 
