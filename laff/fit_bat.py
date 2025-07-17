@@ -1,3 +1,20 @@
+"""
+fit_bat.py
+
+This module provides light curve fitting routines for Swift-BAT data, specifically
+tuned for 64 ms data. The data is filtered to first remove noise, and then identify
+deviation regions above this. Peaks above a certian prominence are found, and a FRED
+flare fitted to each. It also includes a plotting function.
+
+Functions:
+    - fitPrompt: Entire fitting routine that outputs fitted pulses.
+    - plotPrompt: Plotting function for the modelled light curve.
+
+TODO:
+    - t_peak_bound minimum to be determined dynamically based on bin length
+    - window lengths to be dynamic in case of different lengthed data?
+"""
+
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.signal import savgol_filter, find_peaks
@@ -11,13 +28,13 @@ def fitPrompt(data):
 
     data = data[data['flux'] != 0.0].reset_index(drop=True)
 
-    data, flares = filter_data(data)
+    data, pulses = filter_data(data)
 
-    # continuum = find_continuum(data, flares)
+    # continuum = find_continuum(data, pulses)
 
-    flares = fit_flares(data, flares)
+    pulses = fit_pulses(data, pulses)
 
-    return {'data': data, 'flares': flares}
+    return {'data': data, 'pulses': pulses}
 
 ################################################################################
 # DATA FILTERING
@@ -26,12 +43,12 @@ def fitPrompt(data):
 def filter_data(data):
 
     data['avg'] = data['flux_perr'].rolling(window=500, min_periods=1).mean()
-    data['flux_broad'] = data['flux'].rolling(window=20, center=True).mean()
+    data['flux_broad'] = data['flux'].rolling(window=50, center=True).mean()
     data['flux_fine'] = data['flux'].rolling(window=10, center=True).mean()
 
-    peak_sig = 1
-    data['deviation'] = data[data['flux_broad'] > peak_sig * data['avg']]['flux_broad']
+    data['flux_err_std'] = data['flux_perr'].rolling(window=500, min_periods=1).std()
 
+    data['deviation'] = data[(data['flux_broad'] > 5 * data['flux_err_std']) | (data['flux_fine'] > 7.5 * data['flux_err_std'])]['flux_broad']
 
     # Aggregate deviation data into regions.
     labelled_array, num_features = label(data['deviation'] > 0)
@@ -48,7 +65,7 @@ def filter_data(data):
 # FLARE FITTING
 ################################################################################
 
-def fit_flares(data, region_indices):
+def fit_pulses(data, region_indices):
 
     region_peaks = []
 
@@ -58,129 +75,72 @@ def fit_flares(data, region_indices):
 
         flare_peaks, _ = find_peaks(
             region_data['flux_fine'],
-            height = 1.5*np.average(region_data['avg']),
-            distance = 5,
+            height = 1.5*np.average(region_data['flux_err_std']),
+            distance = 2,
             width = 3,
             prominence = 0.5 * np.median(region_data['avg'])
         )
 
-        flare_peaks = [x + idx_start for x in peaks]
+        flare_peaks = [x + idx_start for x in flare_peaks]
         region_peaks.append(flare_peaks)
 
     data['residuals'] = data['flux_fine'].copy()
 
-    flares = []
+    pulses = []
 
     for (idx_start, idx_end), peaks in zip(region_indices, region_peaks):
 
-        flare_count = len(region_peaks)
+        if len(peaks) == 0:
+            continue
 
-        for flare_peak in region_peaks:
+        flare_count = len(peaks)
 
-            t_peak = data['time'].iloc[flare_peak]
-            rise   = ()
+        input_par = []
+        bound_par = []
 
-                # Parameter guesses
-                t_peak    = data['time'].iloc[peak]
-                rise      = (t_peak - t_start) / (6 * i+1)
-                decay     = (t_end - t_peak)   / (4 * i+1)
-                sharp     = 2
-                amplitude = data['savgol'].iloc[peak]
+        for flare_peak in peaks:
 
+            region_width = data['time'].iloc[idx_end] - data['time'].iloc[idx_start].item()
+            estimate_flare_width = region_width / (flare_count * 1) # initial guess of evenly spread pulses
 
+            t_peak = data['time'].iloc[flare_peak].item()
+            rise   = estimate_flare_width / 2 * 2.3 # d ~ actual time width / 2.3
+            decay  = estimate_flare_width / 2 * 2.3
+            sharp  = 2.0
+            amplitude = data['flux_fine'].iloc[flare_peak].item()
 
-    for dev_start, dev_end in flare_indices:
+            input_par.extend((t_peak, rise, decay, sharp, amplitude))
 
-        try_another = True
-        flare_count = 1
+            t_peak_bound = [t_peak-2, t_peak+2] # appropriate for late pulses?
+            rise_bound = [0.032, estimate_flare_width/2] # ~64 ms
+            decay_bound = [0.032, estimate_flare_width/2]
+            sharp_bound = [1.0, 5.0]
+            amplitude_bound = [0, data['flux_fine'].iloc[idx_start:idx_end].max()]
 
-        found_maxima, properties = find_peaks(flare_data['flux'].iloc[dev_start:dev_end+1], prominence=flare_data['moving_std'].iloc[dev_start])            
-        ranked_maxima_idx = np.argsort(properties['prominences'])[::-1]
+            bound_par.extend((t_peak_bound, rise_bound, decay_bound, sharp_bound, amplitude_bound))
 
-        t_start = data['time'].iloc[dev_start]
-        t_end   = data['time'].iloc[dev_end]
+        def all_constraints():
+            pass
 
-        while try_another == True:
+        fitted_pulses = fmin_slsqp(sum_residuals, input_par, bounds=bound_par, args=(data.time, data.residuals, data.flux_perr), iter=200, iprint=0)
 
-            input_par = []
-            bounds = []
+        fitted_stats = calculate_fit_statistics(data, fred_flare, fitted_pulses)
 
-            peaks = [found_maxima[i]+dev_start for i in ranked_maxima_idx[:flare_count]]
-
-            if len(peaks) == 0 and flare_count == 1:
-                peaks = [data['savgol'].iloc[dev_start:dev_end].idxmax()]
-
-            if len(peaks) != flare_count:
-                try_another = False
-                continue
-
-            for i, peak in enumerate(peaks):
-
-                # Parameter guesses
-                t_peak    = data['time'].iloc[peak]
-                rise      = (t_peak - t_start) / (6 * i+1)
-                decay     = (t_end - t_peak)   / (4 * i+1)
-                sharp     = 2
-                amplitude = data['savgol'].iloc[peak]
-
-                input_par.extend((t_peak, rise, decay, sharp, amplitude))
+        for i in range(0, len(fitted_pulses), 5):
             
-                # Parameter bounds
-                t_peak_bound    = [data['time'].iloc[dev_start], data['time'].iloc[dev_end]]
-                rise_bound      = [rise/10, rise/3]
-                decay_bound     = [decay/10, decay/3]
-                sharp_bound     = [1.0, 5.0]
-                amplitude_bound = [0, 2 * data['flux'].max()]
+            data['residuals'] -= fred_flare(fitted_pulses[i:i+5], data['time'])
 
-                bounds.extend((t_peak_bound, rise_bound, decay_bound, sharp_bound, amplitude_bound))
+            start_time = fitted_pulses[i] - (fitted_pulses[i+1] * (-np.log(0.01)) **(1/fitted_pulses[i+3]))
+            end_time = fitted_pulses[i] + (fitted_pulses[i+2] * (-np.log(0.01)) **(1/fitted_pulses[i+3]))
 
-            def all_constraints():
-                pass
-
-            fitted_flare = fmin_slsqp(sum_residuals, input_par, bounds=bounds, args=(flare_data.time, flare_data.untouched_flux, flare_data.flux_perr), iter=200, iprint=0)
-
-            fitted_stats = calculate_fit_statistics(flare_data, fred_flare, fitted_flare)
-
-            if flare_count == 1:
-                prev_fits = fitted_flare
-                prev_stat = fitted_stats
-                flare_count += 1
-                continue
-
-            else:
-                if fitted_stats['BIC'] + 6 < prev_stat['BIC']:
-                    prev_fits = fitted_flare
-                    prev_stat = fitted_stats
-                    flare_count += 1
-                    continue
-                else:
-                    fitted_flare = prev_fits
-                    fitted_stats = prev_stat
-                    flare_count -= 1
-                    try_another = False
-
-        for i in range(0, len(fitted_flare), 5):
-
-            if fitted_flare[i+4] < 1 * np.average(data['negative_noise'].iloc[dev_start:dev_end]):
-                # print('cooked that flare', fitted_flare[i])
-                continue
-
-            # if data['time'].iloc[-1]
-
-            flare_data['flux'] -= fred_flare(fitted_flare[i:i+5], flare_data['time'])
-            flare_data['flux'] = flare_data['flux'].apply(lambda x: max(x, 0))
-
-            fluence_rise = calculate_fluence(fred_flare, fitted_flare[i:i+5], t_start, fitted_flare[i], 1)
-            fluence_decay = calculate_fluence(fred_flare, fitted_flare[i:i+5], fitted_flare[i], t_end, 1)  
+            fluence_rise = calculate_fluence(fred_flare, fitted_pulses[i:i+5], start_time, fitted_pulses[i], 1)
+            fluence_decay = calculate_fluence(fred_flare, fitted_pulses[i:i+5], fitted_pulses[i], end_time, 1)  
             fluence_total = fluence_rise + fluence_decay
-
-            start_time = fitted_flare[i] - (fitted_flare[i+1] * (-np.log(0.01)) **(1/fitted_flare[i+3]))
-            end_time = fitted_flare[i] + (fitted_flare[i+2] * (-np.log(0.01)) **(1/fitted_flare[i+3]))
             
-            flares.append({'indices': (start_time, end_time), 'parameters': fitted_flare[i:i+5], 'fluence': [fluence_rise, fluence_decay, fluence_total], 'fit_statistics': fitted_stats})
+            pulses.append({'indices': (start_time, end_time), 'parameters': fitted_pulses[i:i+5], 'fluence': [fluence_rise, fluence_decay, fluence_total], 'fit_statistics': fitted_stats})
 
 
-    return flares
+    return pulses
 
     
 ################################################################################
@@ -229,38 +189,36 @@ def plotPrompt(prompt_fit, **kwargs):
 
     # Main data points.
     if kwargs.get('main_data', True):
-        ax1.errorbar(data['time'], data['flux'], yerr=data['flux_perr'], linestyle='None', marker='.', color='grey', linewidth=0.5, alpha=0.4, zorder=-1)
+        ax1.errorbar(data['time'], data['flux'], yerr=data['flux_perr'], linestyle='None', marker='', color='grey', linewidth=0.3, alpha=0.2, zorder=-1)
 
     # Savgol filter line.
     if kwargs.get('savgol', True):
-        ax1.plot(data['time'], data['savgol'], color='black', linewidth=0.5, linestyle='--')
-
-    # Residuals.
-    if residuals:
-        ax2.plot(data['time'], data['savgol_residuals'], linewidth=0.5, color='tab:green')
+        ax1.plot(data['time'], data['flux_fine'], color='black', linewidth=0.5, linestyle='--')
+        ax1.plot(data['time'], data['flux_broad'], color="#408EC2", linewidth=1)
+        ax1.plot(data['time'], data['flux_err_std']*5.0, color='r', linewidth=0.5)
+        ax1.plot(data['time'], data['flux_err_std']*7.5, color='r', linewidth=0.5)
 
 
     total_model = [0.0] * constant_range
 
-    for flare in prompt_fit['flares']:
+    for flare in prompt_fit['pulses']:
 
         srt, end = flare['indices']
 
         if kwargs.get('flare_spans', True):
-            ax1.axvspan(srt, end, color='b', alpha=0.2)
-            if residuals:
-                ax2.axvspan(srt, end, color='b', alpha=0.2)
+            # ax1.axvspan(srt, end, color='b', alpha=0.2)
+            pass
 
         flare_model = fred_flare(flare['parameters'], constant_range)
         total_model += flare_model
 
         if kwargs.get('flare_fit', True):
-            ax1.plot(constant_range, flare_model, color='#2274A5', linewidth=1)
-            if residuals:
-                ax2.plot(constant_range, flare_model, color='cyan', linewidth=1)
+            ax1.plot(constant_range, flare_model, color='#2274A5', linewidth=2)
+            pass
 
     if kwargs.get('total_fit', True):
         ax1.plot(constant_range, total_model, color='tab:orange', linewidth=2)
+        pass
 
     plt.xlabel('Time since trigger (s)', fontsize=16)
     plt.ylabel('Count rate (counts/s)', fontsize=16)
