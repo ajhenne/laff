@@ -46,9 +46,22 @@ def filter_data(data):
     data['flux_broad'] = data['flux'].rolling(window=50, center=True).mean()
     data['flux_fine'] = data['flux'].rolling(window=10, center=True).mean()
 
-    data['flux_err_std'] = data['flux_perr'].rolling(window=500, min_periods=1).std()
+    data['flux_err_mean'] = data['flux_perr'].rolling(window=500, min_periods=1).mean()
+    data['flux_std'] = data['flux'].rolling(window=500, min_periods=1).std()
 
-    data['deviation'] = data[(data['flux_broad'] > 5 * data['flux_err_std']) | (data['flux_fine'] > 7.5 * data['flux_err_std'])]['flux_broad']
+
+    data['deviation'] = np.where(
+        (data['flux_broad'] > data['flux_err_mean']) |
+        (data['flux_fine'] > 1.5 * data['flux_err_mean']) |
+        (data['flux'] > 5 * data['flux_err_mean']),
+        data['flux_broad'],
+        np.nan
+    )
+    # above_signifiance = data[(
+    #     data['flux_broad'] > 5 * data['flux_err_mean']) |
+    #     (data['flux_fine'] > 7.5 * data['flux_err_mean'])
+    #     ]
+    # data['deviation'] = above_signifiance['flux_broad']
 
     # Aggregate deviation data into regions.
     labelled_array, num_features = label(data['deviation'] > 0)
@@ -73,18 +86,37 @@ def fit_pulses(data, region_indices):
 
         region_data = data.iloc[idx_start:idx_end]
 
-        flare_peaks, _ = find_peaks(
-            region_data['flux_fine'],
-            height = 1.5*np.average(region_data['flux_err_std']),
-            distance = 2,
-            width = 3,
-            prominence = 0.5 * np.median(region_data['avg'])
-        )
+        region_time = region_data['time'].max() - region_data['time'].min()
+        print(f"{region_time=}")
+
+        if region_time == 0:
+            flare_peaks = [idx_start]
+            region_peaks.append(flare_peaks)
+            continue
+
+        if region_time > 3:
+            print('broad')
+            flare_peaks, prom = find_peaks(
+                region_data['flux_broad'],
+                height = 1.75 * np.average(region_data['avg']),
+                prominence= 0.5 * np.average(region_data['avg']),
+                distance = 2,
+                width = 3,
+            )
+            for (x, y) in zip(flare_peaks, prom['prominences']):
+                print(x, y)
+        else:
+            flare_peaks, _ = find_peaks(
+                region_data['flux_fine'],
+                height = 1.5 * np.average(region_data['avg']),
+                distance = 2,
+                width = 3,
+            )
 
         flare_peaks = [x + idx_start for x in flare_peaks]
         region_peaks.append(flare_peaks)
 
-    data['residuals'] = data['flux_fine'].copy()
+    data['residuals'] = data['flux'].copy()
 
     pulses = []
 
@@ -100,29 +132,54 @@ def fit_pulses(data, region_indices):
 
         for flare_peak in peaks:
 
+            ## continue ewditin from here
+
             region_width = data['time'].iloc[idx_end] - data['time'].iloc[idx_start].item()
-            estimate_flare_width = region_width / (flare_count * 1) # initial guess of evenly spread pulses
+            region_start = data['time'].iloc[idx_start]
+            region_end = data['time'].iloc[idx_end]
+            estimate_flare_width = region_width / flare_count # init even spread pulses
 
             t_peak = data['time'].iloc[flare_peak].item()
-            rise   = estimate_flare_width / 2 * 2.3 # d ~ actual time width / 2.3
-            decay  = estimate_flare_width / 2 * 2.3
+            rise   = estimate_flare_width / 1.5 * 2.3 # d ~ actual time width / 2.3
+            decay  = estimate_flare_width / 2.5 * 2.3
             sharp  = 2.0
             amplitude = data['flux_fine'].iloc[flare_peak].item()
 
             input_par.extend((t_peak, rise, decay, sharp, amplitude))
 
-            t_peak_bound = [t_peak-2, t_peak+2] # appropriate for late pulses?
-            rise_bound = [0.032, estimate_flare_width/2] # ~64 ms
-            decay_bound = [0.032, estimate_flare_width/2]
-            sharp_bound = [1.0, 5.0]
-            amplitude_bound = [0, data['flux_fine'].iloc[idx_start:idx_end].max()]
+            t_peak_bound = [max(t_peak-2, region_start), min(t_peak+2, region_end)] # appropriate for late pulses?
 
-            bound_par.extend((t_peak_bound, rise_bound, decay_bound, sharp_bound, amplitude_bound))
+            if t_peak > 10:
+                rise_bound = [0.89, 0.89*10]
+                decay_bound = [0.89, 0.89*10]
+            else:
+                rise_bound = [0.032, estimate_flare_width] # ~64 ms
+                decay_bound = [0.032, estimate_flare_width]
+
+            sharp_bound = [1.0, 5.0]
+            amplitude_bound = [0, data['flux'].iloc[idx_start:idx_end].max()]
+
+            if amplitude_bound[1] < 0:
+                amplitude_bound[1] *= -1
+
+            bound_par.extend((
+                t_peak_bound,
+                rise_bound,
+                decay_bound,
+                sharp_bound,
+                amplitude_bound,
+                ))
 
         def all_constraints():
             pass
 
-        fitted_pulses = fmin_slsqp(sum_residuals, input_par, bounds=bound_par, args=(data.time, data.residuals, data.flux_perr), iter=200, iprint=0)
+        fitted_pulses = fmin_slsqp(
+            sum_residuals,
+            input_par,
+            bounds=bound_par,
+            args=(data.time, data.residuals, data.flux_perr),
+            iter=200,
+            iprint=0)
 
         fitted_stats = calculate_fit_statistics(data, fred_flare, fitted_pulses)
 
@@ -133,11 +190,24 @@ def fit_pulses(data, region_indices):
             start_time = fitted_pulses[i] - (fitted_pulses[i+1] * (-np.log(0.01)) **(1/fitted_pulses[i+3]))
             end_time = fitted_pulses[i] + (fitted_pulses[i+2] * (-np.log(0.01)) **(1/fitted_pulses[i+3]))
 
-            fluence_rise = calculate_fluence(fred_flare, fitted_pulses[i:i+5], start_time, fitted_pulses[i], 1)
-            fluence_decay = calculate_fluence(fred_flare, fitted_pulses[i:i+5], fitted_pulses[i], end_time, 1)  
+            fluence_rise = calculate_fluence(fred_flare,
+                                             fitted_pulses[i:i+5],
+                                             start_time,
+                                             fitted_pulses[i], 1)
+            fluence_decay = calculate_fluence(
+                fred_flare,
+                fitted_pulses[i:i+5],
+                fitted_pulses[i],
+                end_time,
+                1)  
             fluence_total = fluence_rise + fluence_decay
             
-            pulses.append({'indices': (start_time, end_time), 'parameters': fitted_pulses[i:i+5], 'fluence': [fluence_rise, fluence_decay, fluence_total], 'fit_statistics': fitted_stats})
+            pulses.append({
+                'indices': (start_time, end_time),
+                'parameters': fitted_pulses[i:i+5],
+                'fluence': [fluence_rise, fluence_decay, fluence_total],
+                'fit_statistics': fitted_stats,
+                })
 
 
     return pulses
@@ -195,8 +265,9 @@ def plotPrompt(prompt_fit, **kwargs):
     if kwargs.get('savgol', True):
         ax1.plot(data['time'], data['flux_fine'], color='black', linewidth=0.5, linestyle='--')
         ax1.plot(data['time'], data['flux_broad'], color="#408EC2", linewidth=1)
-        ax1.plot(data['time'], data['flux_err_std']*5.0, color='r', linewidth=0.5)
-        ax1.plot(data['time'], data['flux_err_std']*7.5, color='r', linewidth=0.5)
+        ax1.plot(data['time'], data['flux_err_mean']*1.0, color='r', linewidth=0.5)
+        ax1.plot(data['time'], data['flux_std']*1.0, color='c', linewidth=0.5)
+        # ax1.plot(data['time'], data['flux_err_mean']*7.5, color='r', linewidth=0.5)
 
 
     total_model = [0.0] * constant_range
@@ -213,7 +284,7 @@ def plotPrompt(prompt_fit, **kwargs):
         total_model += flare_model
 
         if kwargs.get('flare_fit', True):
-            ax1.plot(constant_range, flare_model, color='#2274A5', linewidth=2)
+            ax1.plot(constant_range, flare_model, color='#2274A5', linewidth=1)
             pass
 
     if kwargs.get('total_fit', True):
@@ -228,7 +299,7 @@ def plotPrompt(prompt_fit, **kwargs):
     # plt.plot(data['time'], data['negative_noise'], color='m')
 
     # plt.xlim(-50, 200)
-    # plt.ylim(-0.2, 0.4)
+    # plt.ylim(-0.1, 0.2)
     if (save_path := kwargs.get('save')):
         plt.savefig(save_path + grb_name + '.png', bbox_inches='tight')
     if kwargs.get('show', True):
