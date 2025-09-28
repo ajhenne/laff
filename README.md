@@ -93,11 +93,11 @@ While I have eye-tested a number of bursts, there are well over a thousand (and 
 
 ## Publications
 
-A full description of the methods is described in Hennessy et al. (2025) (in prep), or my PhD thesis available at (submitted).
+A full description of the methods used is described in my PhD thesis (*submitted*), which will be shared when available.
 
 Publications in which the products of this work were used in:
 - Hennessy, A. et al. (2023) 'A LOFAR prompt search for radio emission accompanying X-ray flares in GRB 210112A', *MNRAS*, 526(1), pp. 106–117. https://doi.org/10.1093/mnras/stad2670
-- Hennessy, A. et al. (2025) submitted to *MNRAS*
+- Hennessy, A. et al. (2025) 'A LOFAR search for coherent radio emission accompanying prompt engine activity in gamma-ray bursts', *MNRAS*, (pending publication). https://doi.org/10.1093/mnras/staf1640
  
 ## Contributing
 
