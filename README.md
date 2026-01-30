@@ -5,7 +5,7 @@ A scientific Python package for the automated modelling of Swift-XRT and Swift-B
 ## Features 
 
 - Functions to model Swift-XRT and Swift-BAT light curves
-- Fully automated, just provide time/flux or time/countrate data
+- Fully automated, just provide time vs. flux or time vs. count rate data
 - Process typically takes about five seconds, or a few tens of second for the most complex light curves
 - Returns a well-structured dictionary for each afterglow, flare and pulse component including model parameters and fitting statistics
 - Plotting functions for publication-ready figures
@@ -18,7 +18,7 @@ A scientific Python package for the automated modelling of Swift-XRT and Swift-B
 afterglow, flares = laff.fitXRT(data)
 ```
 
-Flares are identified within the dataset. These are temporarily removed leaving only the underlying afterglow, and a best fit among a set of broken power laws with up to five breaks is found. The removed data can then be fitted, as residuals over the afterglow, with fast-rise exponential-decay (FRED) curves, and finally all components are combined to produce a fully modelled afterglow.
+Flares are identified within the dataset. These are temporarily removed leaving only the underlying afterglow, and the best fit among a set of broken power laws with up to five breaks is found. The removed data can then be fitted, as residuals over the afterglow, with fast-rise exponential-decay (FRED) curves, and finally all components are combined to produce a fully modelled afterglow.
 
 `fitXRT` returns:
 - `afterglow`: a dictionary containing model parameter and fit statistics
@@ -45,7 +45,7 @@ The importing function is a helper function to take in data from the several com
 
 - `xrt_repo` - XRT light curve data that is available from the [GRB lightcurve repository](https://www.swift.ac.uk/xrt_curves/) in the .qdp format.
 - `xrt_python` - for light curve data obtained from the `swifttools` [Python package](https://www.swift.ac.uk/API/), usually when analysing large batches of data, in a slightly varied .qdp format
-- `bat` - BAT .csv format file containing time, countrate and error columns, obtained from manually processing BAT observation data with Heasoft.
+- `bat` - BAT .csv format file containing time, count rate and error columns, obtained from manually processing BAT observation data with [Heasoft](https://heasarc.gsfc.nasa.gov/docs/software/lheasoft/).
 
 ## Installation
 
@@ -73,8 +73,8 @@ For analysing one of, or both, the XRT and BAT data of a burst.
 import laff
 
 # Import data into a pandas DataFrame
-xrt_data = laff.lcimport('/path/to/file.qdp', format='xrt_repo')
-bat_data = laff.lcimport('/path/to/file.csv', format='bat')
+xrt_data = laff.lcimport('/path/to/lightcurve_xrt.qdp', format='xrt_repo')
+bat_data = laff.lcimport('/path/to/lightcurve_bat.csv', format='bat')
 
 # Fit and plot the XRT light curve
 afterglow, flares = laff.fitXRT(data)
@@ -85,24 +85,21 @@ pulses = laff.fitBAT(bat_data)
 laff.plotBAT(data, pulses)
 ```
 
-## Troubleshooting
+## Contributing
+
+This project was initially developed as part of my thesis and is now available open source. Contributions are welcome, please open issues or pull requests through GitHub.
+
+LAFF was developed for typical Swift-XRT light curves available from the [Swift XRT lightcurve repository](https://www.swift.ac.uk/xrt_curves/), and Swift-BAT lightcurves obtained though standard Heasoft processing at 64ms. In theory, it should work for any similar binning, or data from other facilities or frequencies, in practice this may not be the case due to the parameters the modelling algorithms were designed around. If you have another mission in mind, I'd be happy to take a look - please raise a GitHub issue and advise where I can find typical lightcurves - this also means I can add a dedicated import helper function.
+
+### Poor fits
 
 Despite the fact I have shown some level of verification to this work through my PhD thesis, there are inevitably some erroneous results spewed out by the code. The random nature of GRBs, noise within the data and things such as observation constraints will cause some strange things to occur in the light curve and my code. The randomness also means it is difficult to fine tune an exact method to consistently catch every single dataset to a perfect standard.
 
-While I have eye-tested a number of bursts, there are well over a thousand (and increasing) now, and I have not gone through every single one. If you notice something odd, I would love to hear so I can continue to develop this code. You may either raise an issue or Github, or find ways to contact me on my Github profile.
+While I have eye-tested a number of bursts, there are well over a thousand (and increasing) now, and I have not gone through every single one. If you notice something odd, I would love to hear, so I can continue to refine this work. You may either raise an issue or GitHub, or find ways to contact me on my GitHub profile.
 
 ## Publications
 
-A full description of the methods used is described in my PhD thesis (*submitted*), which will be shared when available.
-
 Publications in which the products of this work were used in:
 - Hennessy, A. et al. (2023) 'A LOFAR prompt search for radio emission accompanying X-ray flares in GRB 210112A', *MNRAS*, 526(1), pp. 106–117. https://doi.org/10.1093/mnras/stad2670
-- Hennessy, A. et al. (2025) 'A LOFAR search for coherent radio emission accompanying prompt engine activity in gamma-ray bursts', *MNRAS*, (pending publication). https://doi.org/10.1093/mnras/staf1640
- 
-## Contributing
+- Hennessy, A. et al. (2025) 'A LOFAR search for coherent radio emission accompanying prompt engine activity in gamma-ray bursts', *MNRAS*, 544(1), pp. 53-66. https://doi.org/10.1093/mnras/staf1640
 
-This project was initially developed as part of my thesis and is now available open source. Contributions are welcome, please open issues or pull request through GitHub.
-
-## Acknowledgements
-
-Paper references.
